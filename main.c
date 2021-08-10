@@ -1,12 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
-#include <pthread.h>
-#include <curses.h>
+#include <common.h>
 
 //
 // defines
@@ -72,6 +64,13 @@ int main(int argc, char **argv)
 
 static void initialize(void)
 {
+    // xxx read file
+
+
+    // init mccdaq device, used to acquire 500000 samples per second from the
+    // ludlum 2929 amplifier output
+    mccdaq_init();
+    mccdaq_start(mccdaq_callback);
 }
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------

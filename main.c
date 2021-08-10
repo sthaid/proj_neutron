@@ -50,6 +50,7 @@ static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*inp
 int main(int argc, char **argv)
 {
     // initialize
+    // xxx test
     initialize();
 
     // invoke the curses user interface

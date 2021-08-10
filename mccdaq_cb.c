@@ -208,7 +208,6 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 }
 
 #ifdef VERBOSE_PULSES
-// xxx dont printf
 static void print_plot_str(int32_t value, int32_t baseline)
 {
     char    str[110];
@@ -221,11 +220,11 @@ static void print_plot_str(int32_t value, int32_t baseline)
     // idx = value / 100   : range  0 - 99            
 
     if (value > 9995) {
-        printf("%5d: value is out of range\n", value);
+        INFO("%5d: value is out of range\n", value);
         return;
     }
     if (baseline < 0 || baseline > 9995) {
-        printf("%5d: baseline is out of range\n", baseline);
+        INFO("%5d: baseline is out of range\n", baseline);
         return;
     }
 
@@ -252,6 +251,6 @@ static void print_plot_str(int32_t value, int32_t baseline)
         }
     }
 
-    printf("%5d: %s\n", value, str);
+    INFO("%5d: %s\n", value, str);
 }
 #endif

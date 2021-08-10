@@ -11,27 +11,27 @@
 
 // -----------------  LOGGING  -----------------------
 
-//#define DEBUG_PRINT_ENABLED
+extern FILE *fplog;
 
 #define INFO(fmt, args...) \
     do { \
-        printf("INFO: " fmt, ## args); \
+        fprintf(fplog, "INFO: " fmt, ## args); \
     } while (0)
 #define WARN(fmt, args...) \
     do { \
-        printf("WARN: " fmt, ## args); \
+        fprintf(fplog, "WARN: " fmt, ## args); \
     } while (0)
 #define ERROR(fmt, args...) \
     do { \
-        printf("ERROR: " fmt, ## args); \
+        fprintf(fplog, "ERROR: " fmt, ## args); \
     } while (0)
 #define FATAL(fmt, args...) \
     do { \
-        printf("FATAL: " fmt, ## args); \
+        fprintf(fplog, "FATAL: " fmt, ## args); \
         exit(1); \
     } while (0)
 
-#ifdef DEBUG_PRINT_ENABLED
+#if 0
 #define DEBUG(fmt, args...) \
     do { \
         printf("DEBUG: " fmt, ## args); \

@@ -12,6 +12,8 @@
 // variables
 //
 
+FILE *fplog;
+
 //
 // prototypes
 //
@@ -50,22 +52,24 @@ int main(int argc, char **argv)
     curses_runtime(update_display, input_handler, NULL);
     curses_exit();
 
-#if 0
-    // if terminting due to fatal error then print the error str
-    if (fatal_err_str[0] != '\0') {
-        printf("%s\n", fatal_err_str);
-        return 1;
-    }
-#endif
-
     // normal termination    
     return 0;
 }
 
 static void initialize(void)
 {
-    // xxx read file
+    fplog = fopen("neutron.log", "w");
+    if (fplog == NULL) {
+        printf("FATAL: failed to open neutron.log, %s\n", strerror(errno));
+        exit(1);
+    }
+    setlinebuf(fplog);
 
+    // xxx log program starting
+    INFO("----------------------------------------\n");
+
+
+    // xxx read file
 
     // init mccdaq device, used to acquire 500000 samples per second from the
     // ludlum 2929 amplifier output

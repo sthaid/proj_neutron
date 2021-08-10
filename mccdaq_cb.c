@@ -1,9 +1,5 @@
 #include <common.h>
 
-#ifdef VERBOSE_PULSES
-static void print_plot_str(int32_t value, int32_t baseline);
-#endif
-
 // -----------------  MCCDAQ CALLBACK - NEUTRON DETECTOR PULSES  ---------------------
 
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
@@ -14,7 +10,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
     static int32_t  max_data;
     static int32_t  idx;
     static int32_t  baseline;
-    static int32_t  local_max_neutron_pulse;
+    static int32_t  neutron_count;
 
     #define TUNE_PULSE_THRESHOLD  100 
 
@@ -22,7 +18,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         do { \
             max_data = 0; \
             idx = 0; \
-            local_max_neutron_pulse = 0; \
+            neutron_count = 0; \
         } while (0)
 
     // if max_data too big then 
@@ -107,12 +103,73 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         }
 
         // if a pulse has been located ...
-        // - increment count of pulses
-        // - if verbose print details of the pulse
+        // - increment count of pulses;
+        // - done with this pulse
         // endif
         if (pulse_end_idx != -1) {
-            // increment local_max_neutron_pulse
-            local_max_neutron_pulse++;
+            // increment neutron_count
+            neutron_count++;
+
+            // done with this pulse
+            pulse_start_idx = -1;
+            pulse_end_idx = -1;
+        }
+
+        // move to next data 
+        idx++;
+    }
+
+    // if time has incremented then
+    //   - publish neutron count
+    //   - reset variables for the next second 
+    // endif
+    uint64_t time_now = time(NULL);
+    static uint64_t time_last_published;
+    if (time_now > time_last_published) {    
+        publish_neutron_count(time_now, neutron_count);
+        time_last_published = time_now;
+        RESET_FOR_NEXT_SEC;
+    }
+
+    // return 'continue-scanning' 
+    return 0;
+}
+
+// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#if 0
+
+#if 0
+        int32_t mccdaq_restart_count, baseline_mv;
+
+        // publish new neutron data
+        //XXX neutron_data_max_pulse = neutron_count;
+        time_last_published = time_now;
+
+        // print warning if there are mccdaq_restarts, or other concerns
+        mccdaq_restart_count = mccdaq_get_restart_count();
+        baseline_mv = (baseline - 2048) * 10000 / 2048;
+        if (mccdaq_restart_count != 0 ||
+            max_data < 480000 || max_data > 520000 ||
+            baseline_mv < 1500 || baseline_mv > 1800)
+        {
+            WARN("mccdaq_restart_count=%d max_data=%d baseline_mv=%d\n",
+                  mccdaq_restart_count, max_data, baseline_mv);
+        }
+#endif
+
+#ifdef VERBOSE_INFO
+        // print info, and seperator line 
+        INFO("NEUTRON:  neutron_count=%d  mccdaq_samples=%d   mccdaq_restarts=%d   baseline_mv=%d\n",
+               neutron_count,
+               max_data, 
+               mccdaq_restart_count, 
+               baseline_mv);
+        BLANK_LINE;
+        INFO("===========================================\n");
+        BLANK_LINE;
+#endif
 
 // xxx move to routine
 #ifdef VERBOSE_PULSES
@@ -152,60 +209,6 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
                 last_pulse_print_time_us = microsec_timer();
             }
 #endif
-
-            // done with this pulse
-            pulse_start_idx = -1;
-            pulse_end_idx = -1;
-        }
-
-        // move to next data 
-        idx++;
-    }
-
-    // if time has incremented then
-    //   - publish new neutron data
-    //   - if verbose print info
-    //   - reset variables for the next second 
-    // endif
-    uint64_t time_now = time(NULL);
-    static uint64_t time_last_published;
-    if (time_now > time_last_published) {    
-        int32_t mccdaq_restart_count, baseline_mv;
-
-        // publish new neutron data
-        //XXX neutron_data_max_pulse = local_max_neutron_pulse;
-        time_last_published = time_now;
-
-        // print warning if there are mccdaq_restarts, or other concerns
-        mccdaq_restart_count = mccdaq_get_restart_count();
-        baseline_mv = (baseline - 2048) * 10000 / 2048;
-        if (mccdaq_restart_count != 0 ||
-            max_data < 480000 || max_data > 520000 ||
-            baseline_mv < 1500 || baseline_mv > 1800)
-        {
-            WARN("mccdaq_restart_count=%d max_data=%d baseline_mv=%d\n",
-                  mccdaq_restart_count, max_data, baseline_mv);
-        }
-
-#ifdef VERBOSE_INFO
-        // print info, and seperator line 
-        INFO("NEUTRON:  neutron_pulse=%d  mccdaq_samples=%d   mccdaq_restarts=%d   baseline_mv=%d\n",
-               local_max_neutron_pulse,
-               max_data, 
-               mccdaq_restart_count, 
-               baseline_mv);
-        BLANK_LINE;
-        INFO("===========================================\n");
-        BLANK_LINE;
-#endif
-
-        // reset for the next second
-        RESET_FOR_NEXT_SEC;
-    }
-
-    // return 'continue-scanning' 
-    return 0;
-}
 
 #ifdef VERBOSE_PULSES
 static void print_plot_str(int32_t value, int32_t baseline)
@@ -253,4 +256,5 @@ static void print_plot_str(int32_t value, int32_t baseline)
 
     INFO("%5d: %s\n", value, str);
 }
+#endif
 #endif

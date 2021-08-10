@@ -13,6 +13,7 @@
 //
 
 FILE *fplog;
+time_t time_start;
 
 //
 // prototypes
@@ -58,6 +59,8 @@ int main(int argc, char **argv)
 
 static void initialize(void)
 {
+    time_start = time(NULL);
+
     fplog = fopen("neutron.log", "w");
     if (fplog == NULL) {
         printf("FATAL: failed to open neutron.log, %s\n", strerror(errno));
@@ -68,13 +71,22 @@ static void initialize(void)
     // xxx log program starting
     INFO("----------------------------------------\n");
 
-
     // xxx read file
 
     // init mccdaq device, used to acquire 500000 samples per second from the
     // ludlum 2929 amplifier output
     mccdaq_init();
     mccdaq_start(mccdaq_callback);
+}
+
+// -----------------  XXXXXXXXXXXXXXXXXXXXXXXXX ----------------------------
+
+// xxx what about time adjusting
+void publish_neutron_count(time_t time_now, int neutron_count)
+{
+    int xxx = time_now - time_start;
+
+    INFO("time = %d  neutron_count = %d\n", xxx, neutron_count);
 }
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------

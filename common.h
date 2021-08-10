@@ -40,6 +40,10 @@ extern FILE *fplog;
 #define DEBUG(fmt, args...)
 #endif
 
+// -----------------  XXXXXXXXXXXXXX-----------------
+
+void publish_neutron_count(time_t time_now, int neutron_count);
+
 // -----------------  MCCDAQ CB  --------------------
 
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d);

@@ -29,6 +29,7 @@ static int    max_data;
 //
 
 static void initialize(int argc, char **argv);
+static double get_neutron_averaged_count(int idx, int n_avg);
 static void update_display(int maxy, int maxx);
 static int input_handler(int input_char);
 
@@ -125,8 +126,7 @@ static void initialize(int argc, char **argv)
     //    ludlum 2929 amplifier output.
     // endif
     if (mode == MODE_VIEW) {
-        int    line=0, t;
-        double v;
+        int line=0, t, v;
 
         // read filename_dat
         fp_dat = fopen(filename_dat, "r");
@@ -140,7 +140,7 @@ static void initialize(int argc, char **argv)
                     FATAL("invalid line %d in %s\n", line, filename_dat);
                 }
             } else {
-                if (sscanf(s, "%d %lf", &t, &v) != 2) {
+                if (sscanf(s, "%d %d", &t, &v) != 2) {
                     FATAL("invalid line %d in %s\n", line, filename_dat);
                 }
                 data[t] = v;
@@ -149,6 +149,7 @@ static void initialize(int argc, char **argv)
         }
         fclose(fp_dat);
         fp_dat = NULL;
+        INFO("max_data = %d\n", max_data);
     } else {
         // init mccdaq utils
         int rc = mccdaq_init();
@@ -162,7 +163,19 @@ static void initialize(int argc, char **argv)
         if (fp_dat == NULL) {
             FATAL("open %s for writing, %s\n", filename_dat, strerror(errno));
         }
-        fprintf(fp_dat, "# data_start_time = %ld\n", time(NULL));
+        data_start_time = time(NULL);
+        fprintf(fp_dat, "# data_start_time = %ld\n", data_start_time);
+
+#if 1   // xxx test code
+        { int i;
+        for (i = 0; i < (3600*72); i++) {
+            //double r = 1 + (((random() % 401) - 100) / 1000.);
+            double r = 1;
+            fprintf(fp_dat, "%6d %d\n", i, (int)(i*r));
+        }
+        INFO("created test file %s\n", filename_dat);
+        exit(0); }
+#endif
 
         // start acquiring ADC data from mccdaq utils
         mccdaq_start(mccdaq_callback);  // xxx maybe move this routine to this file
@@ -178,7 +191,7 @@ char *time2str(char *s)
     time_t t = time(NULL);
     struct tm result;
     localtime_r(&t, &result);
-    sprintf(s, "%4d-%02d-%02d_%02d:%02d:%02d",
+    sprintf(s, "%4d-%02d-%02d_%02d-%02d-%02d",
             result.tm_year+1900, result.tm_mon+1, result.tm_mday, 
             result.tm_hour, result.tm_min, result.tm_sec);
     return s;
@@ -189,19 +202,35 @@ char *time2str(char *s)
 // xxx pass other stats to here, like number of restarts
 void publish_neutron_count(time_t time_now, int neutron_count) // xxx name
 {
-    int xxx = time_now - data_start_time;
-    INFO("time = %d  neutron_count = %d\n", xxx, neutron_count);
+    int idx = time_now - data_start_time;
 
-    // xxx save in data array
+    if (idx < 0 || idx >= MAX_DATA) {
+        FATAL("idx=%d out of range 0..MAX_DATA-1\n", idx);
+    }
+    // xxx also check idx vs max_data
+
+    INFO("idx = %d  neutron_count = %d\n", idx, neutron_count);
+
+    data[idx] = neutron_count;
+    max_data = idx+1;
 }
 
-void get_neutron_averaged_count(time_t t, int n)
+static double get_neutron_averaged_count(int idx, int n_avg)
 {
-    // assert that idx is not too big
+    if (idx < 0 || idx >= max_data) {
+        FATAL("invalid idx %d, max_data=%d\n", idx, max_data);
+    }
 
-    // if t is too early then return 0
+    if (idx+1 < n_avg) {
+        return 0;
+    }
 
-    // compute the average over n samples
+    int i, sum = 0;
+    for (i = idx+1-n_avg; i <= idx; i++) {
+        sum += data[i];
+    }
+
+    return (double)sum / n_avg;
 }
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------
@@ -221,6 +250,13 @@ static void update_display(int maxy, int maxx)
     // loop over the number of display cols
     // - call get_neutron_averaged_count
     // - plot the data
+
+    int x, y;
+    for (x = 0; x < 80; x++) {
+        y = nearbyint(20 - get_neutron_averaged_count(x, 1));
+        if (y < 0) y = 0;
+        mvprintw(y,x,"*");
+    }
 
 }
 
@@ -275,7 +311,7 @@ static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*inp
         // erase display
         erase();
 
-        // get window size, and print whenever it changes
+        // get window size
         getmaxyx(curses_window, maxy, maxx);
         if (maxy != maxy_last || maxx != maxx_last) {
             maxy_last = maxy;

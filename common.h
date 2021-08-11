@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <curses.h>
+#include <math.h>
 
 // -----------------  LOGGING  -----------------------
 

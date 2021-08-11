@@ -18,7 +18,7 @@ FILE *fp_log2;
 #define INFO(fmt, args...) \
     do { \
         char s[100]; \
-        fprintf(fp_log, "%s INFO: " fmt, time2str(s), ## args); \
+        fprintf(fp_log, "%s INFO: " fmt, time2str(time(NULL),s), ## args); \
         if (fp_log2) { \
             fprintf(fp_log2, "%s INFO: " fmt, s, ## args); \
         } \
@@ -26,7 +26,7 @@ FILE *fp_log2;
 #define WARN(fmt, args...) \
     do { \
         char s[100]; \
-        fprintf(fp_log, "%s WARN: " fmt, time2str(s), ## args); \
+        fprintf(fp_log, "%s WARN: " fmt, time2str(time(NULL),s), ## args); \
         if (fp_log2) { \
             fprintf(fp_log2, "%s WARN: " fmt, s, ## args); \
         } \
@@ -34,7 +34,7 @@ FILE *fp_log2;
 #define ERROR(fmt, args...) \
     do { \
         char s[100]; \
-        fprintf(fp_log, "%s ERROR: " fmt, time2str(s), ## args); \
+        fprintf(fp_log, "%s ERROR: " fmt, time2str(time(NULL),s), ## args); \
         if (fp_log2) { \
             fprintf(fp_log2, "%s ERROR: " fmt, s, ## args); \
         } \
@@ -42,7 +42,7 @@ FILE *fp_log2;
 #define FATAL(fmt, args...) \
     do { \
         char s[100]; \
-        fprintf(fp_log, "%s FATAL: " fmt, time2str(s), ## args); \
+        fprintf(fp_log, "%s FATAL: " fmt, time2str(time(NULL),s), ## args); \
         if (fp_log2) { \
             fprintf(fp_log2, "%s FATAL: " fmt, s, ## args); \
         } \
@@ -62,7 +62,7 @@ FILE *fp_log2;
 
 // from main.c
 void publish_neutron_count(time_t time_now, int neutron_count);
-char *time2str(char *s);
+char *time2str(time_t t, char *s);
 
 // from mccdaq_cb.c
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d);

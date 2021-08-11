@@ -9,6 +9,11 @@
 #define MODE_CAPTURE  0
 #define MODE_VIEW     1
 
+#define MODE_STR(x) \
+    ((x) == MODE_CAPTURE ? "CAPTURE" : \
+     (x) == MODE_VIEW    ? "VIEW"      \
+                         : "????")
+
 //
 // typedefs
 //
@@ -18,6 +23,7 @@
 //
 
 static int    mode;
+static bool   capture_tracking;  // xxx need to set this
 static FILE * fp_dat;
 static time_t data_start_time;
 
@@ -29,7 +35,7 @@ static int    max_data;
 //
 
 static void initialize(int argc, char **argv);
-static double get_neutron_averaged_count(int idx, int n_avg);
+static double get_cpm(int idx, int n_avg);
 static void update_display(int maxy, int maxx);
 static int input_handler(int input_char);
 static void limit_int(int *v, int min, int max);
@@ -39,7 +45,8 @@ static void limit_int(int *v, int min, int max);
 //
 
 #define COLOR_PAIR_RED   1
-#define COLOR_PAIR_CYAN  2
+#define COLOR_PAIR_GREEN 2
+#define COLOR_PAIR_CYAN  3
 
 static bool      curses_active;
 static bool      curses_term_req;
@@ -89,7 +96,7 @@ static void initialize(int argc, char **argv)
 
     // set mode and filename_dat to default
     mode = MODE_CAPTURE;
-    sprintf(filename_dat, "neutron_%s.dat", time2str(s));
+    sprintf(filename_dat, "neutron_%s.dat", time2str(time(NULL),s));
     
     // parse options
     // -v <filename.dat> : selects view mode, neutron data is not read from the ADC 
@@ -115,8 +122,7 @@ static void initialize(int argc, char **argv)
 
     // log program starting
     INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n",
-         mode == MODE_VIEW ? "VIEW" : "CAPTURE",
-         filename_dat);
+         MODE_STR(mode), filename_dat);
 
     // if mode is VIEW then
     //   read the specified neutron_<date_time>.dat file
@@ -186,10 +192,9 @@ static void initialize(int argc, char **argv)
     fp_log2 = NULL;
 }
 
-char *time2str(char *s)
+char *time2str(time_t t, char *s)
 {
-    // example: 2021-08-21_19:21:22
-    time_t t = time(NULL);
+    // example: 2021-08-21_19-21-22
     struct tm result;
     localtime_r(&t, &result);
     sprintf(s, "%4d-%02d-%02d_%02d-%02d-%02d",
@@ -216,14 +221,17 @@ void publish_neutron_count(time_t time_now, int neutron_count) // xxx name
     max_data = idx+1;
 }
 
-static double get_neutron_averaged_count(int idx, int n_avg)
+static double get_cpm(int idx, int n_avg)
 {
-    if (idx < 0 || idx >= max_data) {
-        FATAL("invalid idx %d, max_data=%d\n", idx, max_data);
-    }
+    //if (idx < 0 || idx >= max_data) {
+        //FATAL("invalid idx %d, max_data=%d\n", idx, max_data);
+    //}
 
     if (idx+1 < n_avg) {
-        return 0;
+        return -1;
+    }
+    if (idx >= max_data) {
+        return -1;
     }
 
     int i, sum = 0;
@@ -231,51 +239,85 @@ static double get_neutron_averaged_count(int idx, int n_avg)
         sum += data[i];
     }
 
-    return (double)sum / n_avg;
+    return (double)sum / n_avg / 60;
 }
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------
 
 #define MAX_Y 20
 int max_y = 100;
+int n_avg = 1;
+int end_idx = -1;
 
 static void update_display(int maxy, int maxx)
 {
-#if 0
-    static int cnt;
-    attron(COLOR_PAIR(COLOR_PAIR_CYAN));
-    cnt++;
-    mvprintw(0,0, "HELLO %d\n", cnt);
-    attroff(COLOR_PAIR(COLOR_PAIR_CYAN));
-#endif
     int x, y, idx, start_idx;
-    double count;
+    double cpm;
+
+    if (end_idx == -1) {
+        end_idx = max_data - 1;
+    }
 
     // draw the x and y axis
-    mvprintw(MAX_Y,10, "----------------------------------------------------------------------");
+    // xxx make a 60 char str
+    mvprintw(MAX_Y,10+1, "------------------------------------------------------------");
     for (y = 0; y < MAX_Y; y++) {
         mvprintw(y,10, "|");
     }
+    mvprintw(MAX_Y,10, "+");
 
-    mvprintw(0, 0,       "%d", max_y);
-    mvprintw(MAX_Y/2, 0, "%d", max_y/2);
-    mvprintw(MAX_Y, 0,   "%d", 0);
-
+    mvprintw(0, 0,       "%8d", max_y);
+    mvprintw(MAX_Y/2, 0, "%8d", max_y/2);
+    mvprintw(MAX_Y, 0,   "%8d", 0);
 
     // loop over the number of display cols
-    // - call get_neutron_averaged_count
+    // - call get_cpm
     // - plot the data
 
+    start_idx = end_idx - n_avg * 60;
+    idx = start_idx;
 
-    start_idx = 0;
-    for (x = 10, idx = start_idx; x < 80; x++, idx++) {
-        count = get_neutron_averaged_count(idx, 1);
-        y = nearbyint(MAX_Y * (1 - count / max_y));
-        if (y < 0) y = 0;
-        mvprintw(y,x,"*");
+    for (x = 10+1; x < (10+1+60); x++) {
+        cpm = get_cpm(idx, n_avg);
+        if (cpm != -1) {
+            y = nearbyint(MAX_Y * (1 - cpm / max_y));
+            if (y < 0) y = 0;
+            mvprintw(y,x,"*");
+        }
+        idx += n_avg;
     }
 
-    mvprintw(23, 40, "%0.3f CPM", count);
+    char start_time_str[100], end_time_str[100];
+    time_t start_time, end_time;
+
+    start_time = data_start_time + start_idx;
+    end_time   = data_start_time + end_idx;
+    time2str(start_time, start_time_str);
+    time2str(end_time, end_time_str);
+
+    mvprintw(MAX_Y+1, 11-4, "%s", start_time_str+11);
+    mvprintw(MAX_Y+1, 11+60-4, "%s", end_time_str+11);
+
+    char time_span_str[100];
+    int time_span = end_time - start_time;
+    if (time_span < 60) {
+        sprintf(time_span_str, "<--%d secs-->", time_span);
+    } else if (time_span < 3600) {
+        sprintf(time_span_str, "<--%.1f mins-->", time_span/60.);
+    } else {
+        sprintf(time_span_str, "<--%.1f hours-->", time_span/3600.);
+    }
+    mvprintw(MAX_Y+1, 11+60/2-strlen(time_span_str)/2, "%s", time_span_str);
+
+
+    char cpm_str[100];
+    sprintf(cpm_str, "%s - %0.3f CPM", MODE_STR(mode), cpm);
+    int color = (capture_tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
+    attron(COLOR_PAIR(color));
+    mvprintw(23, 11+60/2-strlen(cpm_str)/2, "%s", cpm_str);
+    attroff(COLOR_PAIR(color));
+
+    mvprintw(29, 0, "n_avg=%d   maxy=%d  maxx=%d  end_idx=%d", n_avg, maxy, maxx, end_idx);
 }
 
 static int input_handler(int input_char)
@@ -286,15 +328,36 @@ static int input_handler(int input_char)
         // terminates pgm
         return -1;
     case 'y': case 'Y':
-        // change max y axis
-        if (input_char == 'y') max_y /= 10;
-        if (input_char == 'Y') max_y *= 10;
-        limit_int(&max_y, 10, 1000000);
+        if (input_char == 'Y') max_y /= 10;
+        if (input_char == 'y') max_y *= 10;
+        break;
+    case 'x': case 'X':
+        if (input_char == 'X') n_avg++;
+        if (input_char == 'x') n_avg--;
+        break;
+    case KEY_LEFT: case KEY_RIGHT: case KEY_SLEFT: case KEY_SRIGHT: case '<': case '>':
+    case KEY_HOME: case KEY_END:
+        if (input_char == KEY_LEFT)   end_idx -= n_avg;
+        if (input_char == KEY_RIGHT)  end_idx += n_avg;
+        if (input_char == KEY_SLEFT)  end_idx -= 60; 
+        if (input_char == KEY_SRIGHT) end_idx += 60; 
+        if (input_char == '<')        end_idx -= 3600; 
+        if (input_char == '>')        end_idx += 3600; 
+        if (input_char == KEY_HOME)   end_idx  = 60 * n_avg;
+        if (input_char == KEY_END)    end_idx  = max_data-1;
+        break;
+    case 'r':
+        // xxx reset
+        break;
     }
 
-    // xxx other ctrls
+    limit_int(&max_y, 10, 1000000);
+    limit_int(&n_avg, 1, 86400/60);
+    limit_int(&end_idx, 60*n_avg, max_data-1);
 
-    // return 0 means don't terminate pgm
+    // xxx enable tracking or disable, when in live mode and end_idx is at max_data-1
+
+    // return 0 (means don't terminate pgm)
     return 0;
 }
 
@@ -316,6 +379,7 @@ static void curses_init(void)
     start_color();
     use_default_colors();
     init_pair(COLOR_PAIR_RED, COLOR_RED, -1);
+    init_pair(COLOR_PAIR_GREEN, COLOR_GREEN, -1);
     init_pair(COLOR_PAIR_CYAN, COLOR_CYAN, -1);
 
     cbreak();

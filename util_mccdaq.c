@@ -91,7 +91,7 @@ int32_t mccdaq_init(void)
     // init usb library
     ret = libusb_init(NULL);
     if (ret != LIBUSB_SUCCESS) {
-        FATAL("libusb_init ret %d\n", ret);
+        FATAL("libusb_init ret %d\n", ret);  // xxx change these to ERROR, and ret -1
     }
 
     // find the MCC-USB-204 usb device

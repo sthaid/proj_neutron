@@ -11,27 +11,44 @@
 
 // -----------------  LOGGING  -----------------------
 
-extern FILE *fplog;
+FILE *fp_log;
+FILE *fp_log2;
 
 #define INFO(fmt, args...) \
     do { \
-        fprintf(fplog, "INFO: " fmt, ## args); \
+        char s[100]; \
+        fprintf(fp_log, "%s INFO: " fmt, time2str(s), ## args); \
+        if (fp_log2) { \
+            fprintf(fp_log2, "%s INFO: " fmt, s, ## args); \
+        } \
     } while (0)
 #define WARN(fmt, args...) \
     do { \
-        fprintf(fplog, "WARN: " fmt, ## args); \
+        char s[100]; \
+        fprintf(fp_log, "%s WARN: " fmt, time2str(s), ## args); \
+        if (fp_log2) { \
+            fprintf(fp_log2, "%s WARN: " fmt, s, ## args); \
+        } \
     } while (0)
 #define ERROR(fmt, args...) \
     do { \
-        fprintf(fplog, "ERROR: " fmt, ## args); \
+        char s[100]; \
+        fprintf(fp_log, "%s ERROR: " fmt, time2str(s), ## args); \
+        if (fp_log2) { \
+            fprintf(fp_log2, "%s ERROR: " fmt, s, ## args); \
+        } \
     } while (0)
 #define FATAL(fmt, args...) \
     do { \
-        fprintf(fplog, "FATAL: " fmt, ## args); \
+        char s[100]; \
+        fprintf(fp_log, "%s FATAL: " fmt, time2str(s), ## args); \
+        if (fp_log2) { \
+            fprintf(fp_log2, "%s FATAL: " fmt, s, ## args); \
+        } \
         exit(1); \
     } while (0)
 
-#if 0
+#if 0 // xxx fix
 #define DEBUG(fmt, args...) \
     do { \
         printf("DEBUG: " fmt, ## args); \
@@ -40,21 +57,19 @@ extern FILE *fplog;
 #define DEBUG(fmt, args...)
 #endif
 
-// -----------------  XXXXXXXXXXXXXX-----------------
+// -----------------  PROTOTYPES  -------------------
 
+// from main.c
 void publish_neutron_count(time_t time_now, int neutron_count);
+char *time2str(char *s);
 
-// -----------------  MCCDAQ CB  --------------------
-
+// from mccdaq_cb.c
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d);
 
-// -----------------  MCCDAQ UTILS  -----------------
-
-typedef int32_t (*mccdaq_callback_t)(uint16_t * data, int32_t max_data);
-
+// from util_mccdaq.c
+typedef int32_t (*mccdaq_callback_t)(uint16_t * data, int32_t max_data);  // xxx elim
 int32_t mccdaq_init(void);
 int32_t  mccdaq_start(mccdaq_callback_t cb);
 int32_t  mccdaq_stop(void);
 int32_t mccdaq_get_restart_count(void);
-
 

@@ -32,6 +32,7 @@ static void initialize(int argc, char **argv);
 static double get_neutron_averaged_count(int idx, int n_avg);
 static void update_display(int maxy, int maxx);
 static int input_handler(int input_char);
+static void limit_int(int *v, int min, int max);
 
 //
 // curses wrapper definitions
@@ -235,6 +236,9 @@ static double get_neutron_averaged_count(int idx, int n_avg)
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------
 
+#define MAX_Y 20
+int max_y = 100;
+
 static void update_display(int maxy, int maxx)
 {
 #if 0
@@ -244,33 +248,60 @@ static void update_display(int maxy, int maxx)
     mvprintw(0,0, "HELLO %d\n", cnt);
     attroff(COLOR_PAIR(COLOR_PAIR_CYAN));
 #endif
+    int x, y, idx, start_idx;
+    double count;
 
     // draw the x and y axis
+    mvprintw(MAX_Y,10, "----------------------------------------------------------------------");
+    for (y = 0; y < MAX_Y; y++) {
+        mvprintw(y,10, "|");
+    }
+
+    mvprintw(0, 0,       "%d", max_y);
+    mvprintw(MAX_Y/2, 0, "%d", max_y/2);
+    mvprintw(MAX_Y, 0,   "%d", 0);
+
 
     // loop over the number of display cols
     // - call get_neutron_averaged_count
     // - plot the data
 
-    int x, y;
-    for (x = 0; x < 80; x++) {
-        y = nearbyint(20 - get_neutron_averaged_count(x, 1));
+
+    start_idx = 0;
+    for (x = 10, idx = start_idx; x < 80; x++, idx++) {
+        count = get_neutron_averaged_count(idx, 1);
+        y = nearbyint(MAX_Y * (1 - count / max_y));
         if (y < 0) y = 0;
         mvprintw(y,x,"*");
     }
 
+    mvprintw(23, 40, "%0.3f CPM", count);
 }
 
 static int input_handler(int input_char)
 {
     // process input_char
-    if (input_char == 4 || input_char == 'q') {  // 4 is ^d
-        return -1;  // terminates pgm
+    switch (input_char) {
+    case 4: case 'q':
+        // terminates pgm
+        return -1;
+    case 'y': case 'Y':
+        // change max y axis
+        if (input_char == 'y') max_y /= 10;
+        if (input_char == 'Y') max_y *= 10;
+        limit_int(&max_y, 10, 1000000);
     }
 
     // xxx other ctrls
 
     // return 0 means don't terminate pgm
     return 0;
+}
+
+static void limit_int(int *v, int min, int max)
+{
+    if (*v < min) *v = min;
+    if (*v > max) *v = max;
 }
 
 // -----------------  CURSES WRAPPER  ----------------------------------------

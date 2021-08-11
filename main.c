@@ -211,8 +211,8 @@ void set_neutron_count(time_t time_now, int neutron_count)
     //INFO("idx = %d  neutron_count = %d\n", idx, neutron_count);
 
     // sanity check, that the time_now is 1 greater than at last call
-    time_t delta_time = time_now - time_last;
     static time_t time_last;
+    time_t delta_time = time_now - time_last;
     if (time_last != 0 && delta_time != 1) {
         WARN("unexpected delta_time %ld, should be 1\n", delta_time);
     }
@@ -345,8 +345,8 @@ static int input_handler(int input_char)
         break;
     case KEY_LEFT: case KEY_RIGHT: case KEY_SLEFT: case KEY_SRIGHT: case '<': case '>':
     case KEY_HOME: case KEY_END:
-        if (input_char == KEY_LEFT)   end_idx -= n_avg;
-        if (input_char == KEY_RIGHT)  end_idx += n_avg;
+        if (input_char == KEY_LEFT)   end_idx -= 1;
+        if (input_char == KEY_RIGHT)  end_idx += 1;
         if (input_char == KEY_SLEFT)  end_idx -= 60; 
         if (input_char == KEY_SRIGHT) end_idx += 60; 
         if (input_char == '<')        end_idx -= 3600; 

@@ -60,14 +60,14 @@ FILE *fp_log2;
 
 // -----------------  PROTOTYPES  -------------------
 
-// from main.c
-void publish_neutron_count(time_t time_now, int neutron_count);
+// main.c ...
+void set_neutron_count(time_t time_now, int neutron_count);
 char *time2str(time_t t, char *s);
 
-// from mccdaq_cb.c
+// mccdaq_cb.c ...
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d);
 
-// from util_mccdaq.c
+// util_mccdaq.c ...
 typedef int32_t (*mccdaq_callback_t)(uint16_t * data, int32_t max_data);  // xxx elim
 int32_t mccdaq_init(void);
 int32_t  mccdaq_start(mccdaq_callback_t cb);

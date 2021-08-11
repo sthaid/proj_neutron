@@ -1,3 +1,5 @@
+// xxx test capture mode using the simulated and the real ADC
+
 #include <common.h>
 
 //
@@ -35,10 +37,10 @@ static int    max_data;
 //
 
 static void initialize(int argc, char **argv);
-static double get_cpm(int idx, int n_avg);
+static double get_neutron_cpm(int idx, int n_avg);
 static void update_display(int maxy, int maxx);
 static int input_handler(int input_char);
-static void limit_int(int *v, int min, int max);
+static void clip_value(int *v, int min, int max);
 
 //
 // curses wrapper definitions
@@ -75,14 +77,12 @@ int main(int argc, char **argv)
     return 0;
 }
 
-// xxx during this routine, log to both stderr and logfile
 static void initialize(int argc, char **argv)
 {
     char filename_dat[100];
     char s[100];
 
-    #define USAGE \
-    "usage: xxxx"
+    #define USAGE "usage: neutron [-v <view_filename.dat] [-h]"
 
     // open log file, line buffered; and
     // log to stderr, just during initialize
@@ -125,12 +125,12 @@ static void initialize(int argc, char **argv)
          MODE_STR(mode), filename_dat);
 
     // if mode is VIEW then
-    //   read the specified neutron_<date_time>.dat file
+    //   read data from filename_dat
     // else 
-    //   Construct neutron_xxxxxxxxxx.dat filename.
-    //   Open and create the dat file.
-    //   Init mccdaq device, used to acquire 500000 samples per second from the
-    //    ludlum 2929 amplifier output.
+    //   Create filename_dat, to save the neutron count data.
+    //   Initialize the ADC, and start the ADC acquiring data from the Ludlum.
+    //     Note: Init mccdaq device, is used to acquire 500000 samples per second from the
+    //           Ludlum 2929 amplifier output.
     // endif
     if (mode == MODE_VIEW) {
         int line=0, t, v;
@@ -173,19 +173,17 @@ static void initialize(int argc, char **argv)
         data_start_time = time(NULL);
         fprintf(fp_dat, "# data_start_time = %ld\n", data_start_time);
 
-#if 1   // xxx test code
+#if 1   // xxx temp test code
         { int i;
-        for (i = 0; i < (3600*72); i++) {
-            //double r = 1 + (((random() % 401) - 100) / 1000.);
-            double r = 1;
-            fprintf(fp_dat, "%6d %d\n", i, (int)(i*r));
+        for (i = 0; i < (3*86400); i++) {
+            fprintf(fp_dat, "%6d %d\n", i, (i%3600)/60);
         }
         INFO("created test file %s\n", filename_dat);
         exit(0); }
 #endif
 
         // start acquiring ADC data from mccdaq utils
-        mccdaq_start(mccdaq_callback);  // xxx maybe move this routine to this file
+        mccdaq_start(mccdaq_callback);
     }
 
     // stop logging to stderr
@@ -203,50 +201,44 @@ char *time2str(time_t t, char *s)
     return s;
 }
 
-// -----------------  XXXXXXXXXXXXXXXXX  -----------------------------------------
+// -----------------  SET NEUTRON COUNT  -----------------------------------------
+
+// called from mccdaq_cb at 1 second intervals, with neutron count for the past second
 
 // xxx pass other stats to here, like number of restarts
-void publish_neutron_count(time_t time_now, int neutron_count) // xxx name
+void set_neutron_count(time_t time_now, int neutron_count)
 {
-    int idx = time_now - data_start_time;
+    //INFO("idx = %d  neutron_count = %d\n", idx, neutron_count);
 
+    // sanity check, that the time_now is 1 greater than at last call
+    time_t delta_time = time_now - time_last;
+    static time_t time_last;
+    if (time_last != 0 && delta_time != 1) {
+        WARN("unexpected delta_time %ld, should be 1\n", delta_time);
+    }
+    time_last = time_now;
+
+    // determine data array idx, and sanity check
+    int idx = time_now - data_start_time;
     if (idx < 0 || idx >= MAX_DATA) {
         FATAL("idx=%d out of range 0..MAX_DATA-1\n", idx);
     }
-    // xxx also check idx vs max_data
 
-    INFO("idx = %d  neutron_count = %d\n", idx, neutron_count);
-
+    // save neutron_count in data array
     data[idx] = neutron_count;
     max_data = idx+1;
-}
 
-static double get_cpm(int idx, int n_avg)
-{
-    //if (idx < 0 || idx >= max_data) {
-        //FATAL("invalid idx %d, max_data=%d\n", idx, max_data);
-    //}
-
-    if (idx+1 < n_avg) {
-        return -1;
-    }
-    if (idx >= max_data) {
-        return -1;
-    }
-
-    int i, sum = 0;
-    for (i = idx+1-n_avg; i <= idx; i++) {
-        sum += data[i];
-    }
-
-    return (double)sum / n_avg / 60;
+    // xxx every 60 secs, write the data to file
+    // xxx also, at exit
 }
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------
 
+// xxx more work here
+
 #define MAX_Y 20
-int max_y = 100;
-int n_avg = 1;
+int max_y = 5000;
+int n_avg = 5;
 int end_idx = -1;
 
 static void update_display(int maxy, int maxx)
@@ -271,14 +263,14 @@ static void update_display(int maxy, int maxx)
     mvprintw(MAX_Y, 0,   "%8d", 0);
 
     // loop over the number of display cols
-    // - call get_cpm
+    // - call get_neutron_cpm
     // - plot the data
 
     start_idx = end_idx - n_avg * 60;
     idx = start_idx;
 
     for (x = 10+1; x < (10+1+60); x++) {
-        cpm = get_cpm(idx, n_avg);
+        cpm = get_neutron_cpm(idx, n_avg);
         if (cpm != -1) {
             y = nearbyint(MAX_Y * (1 - cpm / max_y));
             if (y < 0) y = 0;
@@ -320,6 +312,22 @@ static void update_display(int maxy, int maxx)
     mvprintw(29, 0, "n_avg=%d   maxy=%d  maxx=%d  end_idx=%d", n_avg, maxy, maxx, end_idx);
 }
 
+// returns averaged cpm, or -1 if idx is out of range;
+// the average is computed startint at idx, and working back for n_avg values
+static double get_neutron_cpm(int idx, int n_avg)
+{
+    if (idx+1 < n_avg || idx >= max_data) {
+        return -1;
+    }
+
+    int i, sum = 0;
+    for (i = idx; i > idx-n_avg; i--) {
+        sum += data[i];
+    }
+
+    return (double)sum / n_avg * 60;
+}
+
 static int input_handler(int input_char)
 {
     // process input_char
@@ -351,9 +359,9 @@ static int input_handler(int input_char)
         break;
     }
 
-    limit_int(&max_y, 10, 1000000);
-    limit_int(&n_avg, 1, 86400/60);
-    limit_int(&end_idx, 60*n_avg, max_data-1);
+    clip_value(&max_y, 10, 10000);
+    clip_value(&n_avg, 1, 86400/60);
+    clip_value(&end_idx, 60*n_avg, max_data-1);
 
     // xxx enable tracking or disable, when in live mode and end_idx is at max_data-1
 
@@ -361,7 +369,7 @@ static int input_handler(int input_char)
     return 0;
 }
 
-static void limit_int(int *v, int min, int max)
+static void clip_value(int *v, int min, int max)
 {
     if (*v < min) *v = min;
     if (*v > max) *v = max;

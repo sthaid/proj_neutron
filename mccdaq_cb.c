@@ -126,7 +126,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
     uint64_t time_now = time(NULL);
     static uint64_t time_last_published;
     if (time_now > time_last_published) {    
-        set_neutron_count(time_now, neutron_count);
+        live_mode_set_neutron_count(time_now, neutron_count);
         time_last_published = time_now;
         RESET_FOR_NEXT_SEC;
     }

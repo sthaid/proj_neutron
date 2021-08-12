@@ -25,10 +25,14 @@
 // variables
 //
 
+// xxx organize
 static int    mode;
 static bool   tracking;
 static FILE * fp_dat;
 static time_t data_start_time;
+static bool   program_terminating;
+
+static pthread_t live_mode_write_neutron_data_file_thread_id;
 
 static int    data[MAX_DATA];
 static int    max_data;
@@ -38,8 +42,10 @@ static int    max_data;
 //
 
 static void initialize(int argc, char **argv);
-static double get_neutron_cps(int idx, int secs);
+static void * live_mode_write_neutron_data_file_thread(void *cx);
+
 static void update_display(int maxy, int maxx);
+static double get_neutron_cps(int idx, int secs);
 static int input_handler(int input_char);
 static void clip_value(int *v, int min, int max);
 
@@ -72,8 +78,13 @@ int main(int argc, char **argv)
     curses_runtime(update_display, input_handler);
     curses_exit();
 
-    // normal termination    
+    // program terminating
     INFO("terminating\n");
+    program_terminating = true;
+    if (mode == MODE_LIVE) {
+        assert(live_mode_write_neutron_data_file_thread_id != 0);
+        pthread_join(live_mode_write_neutron_data_file_thread_id, NULL);
+    }
     return 0;
 }
 
@@ -188,14 +199,9 @@ static void initialize(int argc, char **argv)
         data_start_time = time(NULL);
         fprintf(fp_dat, "# data_start_time = %ld\n", data_start_time);
 
-#if 0   // xxx temp test code
-        { int i;
-        for (i = 0; i < (3*86400); i++) {
-            fprintf(fp_dat, "%6d %d\n", i, (i%3600)/60);
-        }
-        INFO("created test file %s\n", filename_dat);
-        exit(0); }
-#endif
+        // xxx create thread
+        pthread_create(&live_mode_write_neutron_data_file_thread_id, NULL, 
+                       live_mode_write_neutron_data_file_thread, NULL);
 
         // start acquiring ADC data from mccdaq utils
         mccdaq_start(mccdaq_callback);
@@ -230,7 +236,7 @@ char *time2str(time_t t, char *s, bool filename_format)
 // called from mccdaq_cb at 1 second intervals, with neutron count for the past second
 
 // xxx pass other stats to here, like number of restarts
-void set_neutron_count(time_t time_now, int neutron_count)
+void live_mode_set_neutron_count(time_t time_now, int neutron_count)
 {
     // determine data array idx, and sanity check
     int idx = time_now - data_start_time;
@@ -250,11 +256,45 @@ void set_neutron_count(time_t time_now, int neutron_count)
     time_last = time_now;
 
     // save neutron_count in data array
-    data[idx] = neutron_count;
+    //xxx data[idx] = neutron_count;
+    data[idx] = 1000 + idx;  // xxx temp test  xxx
+    __sync_synchronize();
     max_data = idx+1;
+}
 
-    // xxx every 60 secs, write the data to file
-    // xxx also, at exit
+static void * live_mode_write_neutron_data_file_thread(void *cx)
+{
+    int        idx;
+    bool       terminate;
+    static int last_idx_written = -1;
+
+    // file should already been opened in initialize()
+    assert(fp_dat);
+
+    // loop, writing data to neutron.dat file
+    while (true) {
+        // read program_terminating flag prior to writing to the file
+        terminate = program_terminating;
+
+        // write new neutron count data entries to the file
+        for (idx = last_idx_written+1; idx < max_data; idx++) {
+            fprintf(fp_dat, "%6d %6d\n", idx, data[idx]);
+            last_idx_written = idx;
+        }
+
+        // if terminate has been requested then break
+        if (terminate) {
+            break;
+        }
+
+        // sleep 1 sec
+        sleep(1);
+    }
+
+    // close the file, and
+    // exit this thread
+    fclose(fp_dat);
+    return NULL;
 }
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------
@@ -398,9 +438,7 @@ static int input_handler(int input_char)
         if (input_char == KEY_HOME)   end_idx  = 0;
         if (input_char == KEY_END)    end_idx  = _max_data-1;
         clip_value(&end_idx, 0, _max_data-1);
-
         tracking = (mode == MODE_LIVE && end_idx == _max_data-1);
-        INFO("XXX end_idx %d  tracking %d\n", end_idx, tracking);
         break;
     case 'r':
         y_max    = DEFAULT_Y_MAX;

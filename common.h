@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <curses.h>
 #include <math.h>
+#include <assert.h>
 
 // -----------------  LOGGING  -----------------------
 
@@ -40,7 +41,7 @@ bool verbose[MAX_VERBOSE];
 // -----------------  PROTOTYPES  -------------------
 
 // main.c ...
-void set_neutron_count(time_t time_now, int neutron_count);
+void live_mode_set_neutron_count(time_t time_now, int neutron_count);
 char *time2str(time_t t, char *s, bool filename_format);
 
 // mccdaq_cb.c ...

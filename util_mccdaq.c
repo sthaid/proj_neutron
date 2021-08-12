@@ -43,7 +43,7 @@ void usbAInScanClearFIFO_USB20X(libusb_device_handle *udev);
 
 #define STATE_CHANGE(new_state) \
     do { \
-        DEBUG("state is now %s\n", STATE_STRING(new_state)); \
+        VERBOSE1("state is now %s\n", STATE_STRING(new_state)); \
         g_state = (new_state); \
     } while (0)
 #define STATE_STRING(x) \
@@ -273,7 +273,7 @@ static void * mccdaq_producer_thread(void * cx)
                                    &transferred_bytes, 
                                    TOUT_MS);
         status = usbStatus_USB20X(g_udev);
-        DEBUG("ret=%d length=%d transferred_byts=%d status=%d\n", 
+        VERBOSE1("ret=%d length=%d transferred_byts=%d status=%d\n", 
               ret, length, transferred_bytes, status);
 
         // print warning if transferred_bytes is odd
@@ -302,7 +302,7 @@ static void * mccdaq_producer_thread(void * cx)
             if (ret != LIBUSB_ERROR_PIPE && ret != 0) {
                 WARN("restarting, ret==%d status=0x%x\n", ret, status);
             } else {
-                DEBUG("restarting, ret==%d status=0x%x\n", ret, status); 
+                VERBOSE1("restarting, ret==%d status=0x%x\n", ret, status); 
             }
 
             libusb_clear_halt(g_udev, LIBUSB_ENDPOINT_IN|1);
@@ -320,7 +320,7 @@ static void * mccdaq_producer_thread(void * cx)
             FATAL("data out of range, %zd\n", data-g_data);
         }
         if (data == g_data + MAX_DATA) {
-            DEBUG("resetting data to begining of circular buffer\n");
+            VERBOSE1("resetting data to begining of circular buffer\n");
             data = g_data;
         }
     }
@@ -459,7 +459,7 @@ int libusb_bulk_transfer (struct libusb_device_handle *dev_handle, unsigned char
 
     // delay 
     us = max_data * 1000000L / FREQUENCY;
-    DEBUG("SLEEP %ld, MAX_DATA = %d\n", us, max_data);
+    VERBOSE1("SLEEP %ld, MAX_DATA = %d\n", us, max_data);
     usleep(us);
 
     // return success

@@ -1,4 +1,5 @@
 // xxx test capture mode using the simulated and the real ADC
+// xxx need to set this - live_tracking
 
 #include <common.h>
 
@@ -8,13 +9,13 @@
 
 #define MAX_DATA (100*86400)
 
-#define MODE_CAPTURE  0
-#define MODE_VIEW     1
+#define MODE_LIVE      0
+#define MODE_PLAYBACK  1
 
 #define MODE_STR(x) \
-    ((x) == MODE_CAPTURE ? "CAPTURE" : \
-     (x) == MODE_VIEW    ? "VIEW"      \
-                         : "????")
+    ((x) == MODE_LIVE     ? "LIVE"     : \
+     (x) == MODE_PLAYBACK ? "PLAYBACK"   \
+                          : "????")
 
 //
 // typedefs
@@ -25,7 +26,7 @@
 //
 
 static int    mode;
-static bool   capture_tracking;  // xxx need to set this
+static bool   tracking;
 static FILE * fp_dat;
 static time_t data_start_time;
 
@@ -37,7 +38,7 @@ static int    max_data;
 //
 
 static void initialize(int argc, char **argv);
-static double get_neutron_cpm(int idx, int n_avg);
+static double get_neutron_cps(int idx, int secs);
 static void update_display(int maxy, int maxx);
 static int input_handler(int input_char);
 static void clip_value(int *v, int min, int max);
@@ -57,8 +58,7 @@ static WINDOW  * curses_window;
 
 static void curses_init(void);
 static void curses_exit(void);
-static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*input_handler)(int input_char),
-                           void (*other_handler)(void));
+static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*input_handler)(int input_char));
 
 // -----------------  MAIN & INITIALIZE  -----------------------------------------
 
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 
     // invoke the curses user interface
     curses_init();
-    curses_runtime(update_display, input_handler, NULL);
+    curses_runtime(update_display, input_handler);
     curses_exit();
 
     // normal termination    
@@ -82,7 +82,10 @@ static void initialize(int argc, char **argv)
     char filename_dat[100];
     char s[100];
 
-    #define USAGE "usage: neutron [-v <view_filename.dat] [-h]"
+    #define USAGE "usage: neutron [-p <filename.dat] [-v <select>] [-h]\n" \
+                  "        -p <filename.dat> : playback\n" \
+                  "        -v <select>       : enable verbose logging, select=0,1,2,3,all\n" \
+                  "        -h                : help\n"
 
     // open log file, line buffered; and
     // log to stderr, just during initialize
@@ -95,21 +98,33 @@ static void initialize(int argc, char **argv)
     fp_log2 = stderr;
 
     // set mode and filename_dat to default
-    mode = MODE_CAPTURE;
-    sprintf(filename_dat, "neutron_%s.dat", time2str(time(NULL),s));
+    mode = MODE_LIVE;
+    sprintf(filename_dat, "neutron_%s.dat", time2str(time(NULL),s,true));
     
     // parse options
     // -v <filename.dat> : selects view mode, neutron data is not read from the ADC 
     // -h                : brief help
     while (true) {
-        int ch = getopt(argc, argv, "v:h");
+        int ch = getopt(argc, argv, "p:v:h");
         if (ch == -1) {
             break;
         }
         switch (ch) {
-        case 'v':
-            mode = MODE_VIEW;
+        case 'p':
+            mode = MODE_PLAYBACK;
             strcpy(filename_dat, optarg);
+            break;
+        case 'v':
+            if (strcmp(optarg, "all") == 0) {
+                memset(verbose, 1, MAX_VERBOSE);
+            } else {
+                int cnt, select;
+                cnt = sscanf(optarg, "%d", &select);
+                if (cnt != 1 || select < 0 || select >= MAX_VERBOSE) {
+                    FATAL("invalid verbose select '%s'\n", optarg);
+                }
+                verbose[select] = true;
+            }
             break;
         case 'h':
             printf("%s\n", USAGE);
@@ -124,7 +139,7 @@ static void initialize(int argc, char **argv)
     INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n",
          MODE_STR(mode), filename_dat);
 
-    // if mode is VIEW then
+    // if mode is PLAYBACK then
     //   read data from filename_dat
     // else 
     //   Create filename_dat, to save the neutron count data.
@@ -132,7 +147,7 @@ static void initialize(int argc, char **argv)
     //     Note: Init mccdaq device, is used to acquire 500000 samples per second from the
     //           Ludlum 2929 amplifier output.
     // endif
-    if (mode == MODE_VIEW) {
+    if (mode == MODE_PLAYBACK) {
         int line=0, t, v;
 
         // read filename_dat
@@ -173,7 +188,7 @@ static void initialize(int argc, char **argv)
         data_start_time = time(NULL);
         fprintf(fp_dat, "# data_start_time = %ld\n", data_start_time);
 
-#if 1   // xxx temp test code
+#if 0   // xxx temp test code
         { int i;
         for (i = 0; i < (3*86400); i++) {
             fprintf(fp_dat, "%6d %d\n", i, (i%3600)/60);
@@ -184,20 +199,29 @@ static void initialize(int argc, char **argv)
 
         // start acquiring ADC data from mccdaq utils
         mccdaq_start(mccdaq_callback);
+
+        // xxx
+        tracking = true;
     }
 
     // stop logging to stderr
     fp_log2 = NULL;
 }
 
-char *time2str(time_t t, char *s)
+char *time2str(time_t t, char *s, bool filename_format)
 {
     // example: 2021-08-21_19-21-22
     struct tm result;
     localtime_r(&t, &result);
-    sprintf(s, "%4d-%02d-%02d_%02d-%02d-%02d",
-            result.tm_year+1900, result.tm_mon+1, result.tm_mday, 
-            result.tm_hour, result.tm_min, result.tm_sec);
+    if (filename_format) {
+        sprintf(s, "%4d-%02d-%02d_%02d-%02d-%02d",
+                result.tm_year+1900, result.tm_mon+1, result.tm_mday, 
+                result.tm_hour, result.tm_min, result.tm_sec);
+    } else {
+        sprintf(s, "%4d/%02d/%02d %02d:%02d:%02d",
+                result.tm_year+1900, result.tm_mon+1, result.tm_mday, 
+                result.tm_hour, result.tm_min, result.tm_sec);
+    }
     return s;
 }
 
@@ -208,7 +232,14 @@ char *time2str(time_t t, char *s)
 // xxx pass other stats to here, like number of restarts
 void set_neutron_count(time_t time_now, int neutron_count)
 {
-    //INFO("idx = %d  neutron_count = %d\n", idx, neutron_count);
+    // determine data array idx, and sanity check
+    int idx = time_now - data_start_time;
+    if (idx < 0 || idx >= MAX_DATA) {
+        FATAL("idx=%d out of range 0..MAX_DATA-1\n", idx);
+    }
+
+    // verbose print
+    VERBOSE0("idx = %d  neutron_count = %d\n", idx, neutron_count);
 
     // sanity check, that the time_now is 1 greater than at last call
     static time_t time_last;
@@ -217,12 +248,6 @@ void set_neutron_count(time_t time_now, int neutron_count)
         WARN("unexpected delta_time %ld, should be 1\n", delta_time);
     }
     time_last = time_now;
-
-    // determine data array idx, and sanity check
-    int idx = time_now - data_start_time;
-    if (idx < 0 || idx >= MAX_DATA) {
-        FATAL("idx=%d out of range 0..MAX_DATA-1\n", idx);
-    }
 
     // save neutron_count in data array
     data[idx] = neutron_count;
@@ -234,139 +259,160 @@ void set_neutron_count(time_t time_now, int neutron_count)
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------
 
-// xxx more work here
+// default vales for plot area
+#define DEFAULT_Y_MAX 5000   // y axis max value
+#define DEFAULT_SECS  1      // number of seconds of data[] per plot column
 
-#define MAX_Y 20
-int max_y = 5000;
-int n_avg = 5;
-int end_idx = -1;
+// define plot area size and position
+#define MAX_Y  20
+#define MAX_X  60
+#define BASE_X 11
+
+static int y_max = DEFAULT_Y_MAX;
+static int secs  = DEFAULT_SECS;
+static int end_idx;  // will be initialized on first call to update_display
 
 static void update_display(int maxy, int maxx)
 {
-    int x, y, idx, start_idx;
-    double cpm;
+    int         x, y, idx, start_idx, time_span, color;
+    time_t      start_time, end_time;
+    char        start_time_str[100], end_time_str[100], time_span_str[100], cpm_str[100];
+    double      cpm=0;
 
-    if (end_idx == -1) {
+    static char x_axis[1000];
+    static bool first_call = true;
+
+    // initialize on first call
+    if (first_call) {
+        end_idx = max_data - 1;
+        memset(x_axis, '-', MAX_X);
+        first_call = false;
+    }
+
+    // xxx
+    if (tracking) {
         end_idx = max_data - 1;
     }
 
     // draw the x and y axis
-    // xxx make a 60 char str
-    mvprintw(MAX_Y,10+1, "------------------------------------------------------------");
+    mvprintw(MAX_Y,BASE_X, x_axis);
     for (y = 0; y < MAX_Y; y++) {
-        mvprintw(y,10, "|");
+        mvprintw(y,BASE_X-1, "|");
     }
-    mvprintw(MAX_Y,10, "+");
+    mvprintw(MAX_Y,BASE_X-1, "+");
 
-    mvprintw(0, 0,       "%8d", max_y);
-    mvprintw(MAX_Y/2, 0, "%8d", max_y/2);
-    mvprintw(MAX_Y, 0,   "%8d", 0);
-
-    // loop over the number of display cols
-    // - call get_neutron_cpm
-    // - plot the data
-
-    start_idx = end_idx - n_avg * 60;
+    // draw the neutron count rate data plot
+    start_idx = end_idx - secs * MAX_X;
     idx = start_idx;
-
-    for (x = 10+1; x < (10+1+60); x++) {
-        cpm = get_neutron_cpm(idx, n_avg);
-        if (cpm != -1) {
-            y = nearbyint(MAX_Y * (1 - cpm / max_y));
+    for (x = BASE_X; x < BASE_X+MAX_X; x++) {
+        double cps = get_neutron_cps(idx, secs);
+        if (cps != -1) {
+            cpm = cps * 60;
+            y = nearbyint(MAX_Y * (1 - cpm / y_max));
             if (y < 0) y = 0;
             mvprintw(y,x,"*");
         }
-        idx += n_avg;
+        idx += secs;
     }
 
-    char start_time_str[100], end_time_str[100];
-    time_t start_time, end_time;
+    // draw the y axis labels
+    mvprintw(0, 0,       "%8d", y_max);
+    mvprintw(MAX_Y/2, 0, "%8d", y_max/2);
+    mvprintw(MAX_Y, 0,   "%8d", 0);
 
+    // draw x axis start and end times
     start_time = data_start_time + start_idx;
     end_time   = data_start_time + end_idx;
-    time2str(start_time, start_time_str);
-    time2str(end_time, end_time_str);
+    time2str(start_time, start_time_str, false);
+    time2str(end_time, end_time_str, false);
+    mvprintw(MAX_Y+1, BASE_X-4, "%s", start_time_str+11);
+    mvprintw(MAX_Y+1, BASE_X+MAX_X-4, "%s", end_time_str+11);
 
-    mvprintw(MAX_Y+1, 11-4, "%s", start_time_str+11);
-    mvprintw(MAX_Y+1, 11+60-4, "%s", end_time_str+11);
-
-    char time_span_str[100];
-    int time_span = end_time - start_time;
+    // draw x axis time span, choose units dynamically
+    time_span = end_time - start_time;
     if (time_span < 60) {
         sprintf(time_span_str, "<--%d secs-->", time_span);
     } else if (time_span < 3600) {
-        sprintf(time_span_str, "<--%.1f mins-->", time_span/60.);
+        sprintf(time_span_str, "<--%.0f mins-->", time_span/60.);
     } else {
-        sprintf(time_span_str, "<--%.1f hours-->", time_span/3600.);
+        sprintf(time_span_str, "<--%.3f hours-->", time_span/3600.);
     }
-    mvprintw(MAX_Y+1, 11+60/2-strlen(time_span_str)/2, "%s", time_span_str);
+    mvprintw(MAX_Y+1, BASE_X+MAX_X/2-strlen(time_span_str)/2, "%s", time_span_str);
 
-
-    char cpm_str[100];
+    // draw neutron cpm; color is:
+    // - GREEN: displaying the current value from the detector
+    // - RED: displaying old value, either from playback file, or from
+    //        having moved to an old value in the live data
     sprintf(cpm_str, "%s - %0.3f CPM", MODE_STR(mode), cpm);
-    int color = (capture_tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
+    color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
     attron(COLOR_PAIR(color));
-    mvprintw(23, 11+60/2-strlen(cpm_str)/2, "%s", cpm_str);
+    mvprintw(23, BASE_X+MAX_X/2-strlen(cpm_str)/2, "%s", cpm_str);
     attroff(COLOR_PAIR(color));
 
-    mvprintw(29, 0, "n_avg=%d   maxy=%d  maxx=%d  end_idx=%d", n_avg, maxy, maxx, end_idx);
+    // xxx temp
+    mvprintw(29, 0, "secs=%d   maxy=%d  maxx=%d  end_idx=%d  max_data=%d", 
+             secs, maxy, maxx, end_idx, max_data);
 }
 
 // returns averaged cpm, or -1 if idx is out of range;
-// the average is computed startint at idx, and working back for n_avg values
-static double get_neutron_cpm(int idx, int n_avg)
+// the average is computed startint at idx, and working back for secs values
+static double get_neutron_cps(int idx, int secs)
 {
-    if (idx+1 < n_avg || idx >= max_data) {
+    if (idx+1 < secs || idx >= max_data) {
         return -1;
     }
 
     int i, sum = 0;
-    for (i = idx; i > idx-n_avg; i--) {
+    for (i = idx; i > idx-secs; i--) {
         sum += data[i];
     }
 
-    return (double)sum / n_avg * 60;
+    return (double)sum / secs;
 }
 
 static int input_handler(int input_char)
 {
+    int _max_data = max_data;
+
     // process input_char
     switch (input_char) {
     case 4: case 'q':
-        // terminates pgm
-        return -1;
-    case 'y': case 'Y':
-        if (input_char == 'Y') max_y /= 10;
-        if (input_char == 'y') max_y *= 10;
+        return -1; // terminates pgm
+    case KEY_NPAGE: case KEY_PPAGE:
+        if (input_char == KEY_PPAGE) y_max *= 10;
+        if (input_char == KEY_NPAGE) y_max /= 10;
+        clip_value(&y_max, 10, 10000);
         break;
-    case 'x': case 'X':
-        if (input_char == 'X') n_avg++;
-        if (input_char == 'x') n_avg--;
+    case '+': case '=': case '-':
+        if (input_char == '+' || input_char == '=') secs++;
+        if (input_char == '-') secs--;
+        clip_value(&secs, 1, 86400/MAX_X);
         break;
-    case KEY_LEFT: case KEY_RIGHT: case KEY_SLEFT: case KEY_SRIGHT: case '<': case '>':
-    case KEY_HOME: case KEY_END:
+    case KEY_LEFT: case KEY_RIGHT: case ',': case '.': case '<': case '>': case KEY_HOME: case KEY_END:
         if (input_char == KEY_LEFT)   end_idx -= 1;
         if (input_char == KEY_RIGHT)  end_idx += 1;
-        if (input_char == KEY_SLEFT)  end_idx -= 60; 
-        if (input_char == KEY_SRIGHT) end_idx += 60; 
+        if (input_char == ',')        end_idx -= 60; 
+        if (input_char == '.')        end_idx += 60; 
         if (input_char == '<')        end_idx -= 3600; 
         if (input_char == '>')        end_idx += 3600; 
-        if (input_char == KEY_HOME)   end_idx  = 60 * n_avg;
-        if (input_char == KEY_END)    end_idx  = max_data-1;
+        if (input_char == KEY_HOME)   end_idx  = 0;
+        if (input_char == KEY_END)    end_idx  = _max_data-1;
+        clip_value(&end_idx, 0, _max_data-1);
+
+        tracking = (mode == MODE_LIVE && end_idx == _max_data-1);
+        INFO("XXX end_idx %d  tracking %d\n", end_idx, tracking);
         break;
     case 'r':
-        // xxx reset
+        y_max    = DEFAULT_Y_MAX;
+        secs     = DEFAULT_SECS;
+        end_idx  = _max_data-1;
+        tracking = (mode == MODE_LIVE && end_idx == _max_data-1);
         break;
     }
 
-    clip_value(&max_y, 10, 10000);
-    clip_value(&n_avg, 1, 86400/60);
-    clip_value(&end_idx, 60*n_avg, max_data-1);
+    // xxx move these
 
-    // xxx enable tracking or disable, when in live mode and end_idx is at max_data-1
-
-    // return 0 (means don't terminate pgm)
-    return 0;
+    return 0;  // do not terminate pgm
 }
 
 static void clip_value(int *v, int min, int max)
@@ -403,8 +449,7 @@ static void curses_exit(void)
     curses_active = false;
 }
 
-static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*input_handler)(int input_char),
-                           void (*other_handler)(void))
+static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*input_handler)(int input_char))
 {
     int input_char, maxy, maxx;
     int maxy_last=0, maxx_last=0;
@@ -444,12 +489,6 @@ static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*inp
         // if terminate curses request flag then return
         if (curses_term_req) {
             return;
-        }
-
-        // if other_handler is provided then call it
-        // xxx delete ?
-        if (other_handler) {
-            other_handler();
         }
 
         // if need to sleep is indicated then do so

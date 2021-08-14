@@ -4,7 +4,7 @@
 // defines
 //
 
-#define MAX_CPS (100*86400)
+#define MAX_CPS_DATA (100*86400)
 
 #define MODE_LIVE      0
 #define MODE_PLAYBACK  1
@@ -30,7 +30,7 @@ static pthread_t live_mode_write_cps_data_thread_id;
 static char      filename_dat[200];
 
 static time_t    cps_data_start_time;
-static int       cps_data[MAX_CPS];
+static int       cps_data[MAX_CPS_DATA];
 static int       max_cps_data;
 
 //
@@ -199,7 +199,7 @@ static void initialize(int argc, char **argv)
         pthread_create(&live_mode_write_cps_data_thread_id, NULL, 
                        live_mode_write_cps_data_thread, NULL);
 
-        // start acquiring ADC data from mccdaq utils
+        // start acquiring ADC data using mccdaq utils
         mccdaq_start(mccdaq_callback);
 
         // enable tracking, this applies only to MODE_LIVE, and causes
@@ -236,8 +236,8 @@ void live_mode_set_neutron_count(time_t time_now, int neutron_count)
 {
     // determine data array time_idx, and sanity check
     int time_idx = time_now - cps_data_start_time;
-    if (time_idx < 0 || time_idx >= MAX_CPS) {
-        FATAL("time_idx=%d out of range 0..MAX_CPS-1\n", time_idx);
+    if (time_idx < 0 || time_idx >= MAX_CPS_DATA) {
+        FATAL("time_idx=%d out of range 0..MAX_CPS_DATA-1\n", time_idx);
     }
 
     // sanity check, that the time_now is 1 greater than at last call
@@ -340,7 +340,7 @@ static void update_display(int maxy, int maxx)
     }
     mvprintw(MAX_Y,BASE_X-1, "+");
 
-    // draw the neutron count rate data plot
+    // draw the neutron count rate plot
     start_idx = end_idx - secs * MAX_X;
     idx = start_idx;
     for (x = BASE_X; x < BASE_X+MAX_X; x++) {
@@ -388,7 +388,7 @@ static void update_display(int maxy, int maxx)
     mvprintw(23, BASE_X+MAX_X/2-strlen(cpm_str)/2, "%s", cpm_str);
     attroff(COLOR_PAIR(color));
 
-    // print interesting variables
+    // print some variables
     mvprintw(27, 0, "%s  %s\n", MODE_STR(mode), filename_dat);
     mvprintw(28, 0, "maxx,y=%d,%d  y_max=%d  sec=%d  max_cps_data=%d  end_idx=%d",
              maxx, maxy, Y_MAX, secs, max_cps_data, end_idx);

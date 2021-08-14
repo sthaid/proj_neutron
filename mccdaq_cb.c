@@ -108,9 +108,6 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         }
 
         // if a pulse has been located ...
-        // - increment count of pulses;
-        // - done with this pulse
-        // endif
         if (pulse_end_idx != -1) {
             // increment neutron_count
             neutron_count++;

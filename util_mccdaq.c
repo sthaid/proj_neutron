@@ -1,5 +1,7 @@
 #include <common.h>
 
+//#define MCCDAQ_TEST
+
 #ifndef MCCDAQ_TEST
 #include <libusb/pmd.h>
 #include <libusb/usb-20X.h>
@@ -43,7 +45,7 @@ void usbAInScanClearFIFO_USB20X(libusb_device_handle *udev);
 
 #define STATE_CHANGE(new_state) \
     do { \
-        VERBOSE1("state is now %s\n", STATE_STRING(new_state)); \
+        VERBOSE2("state is now %s\n", STATE_STRING(new_state)); \
         g_state = (new_state); \
     } while (0)
 #define STATE_STRING(x) \
@@ -91,7 +93,8 @@ int32_t mccdaq_init(void)
     // init usb library
     ret = libusb_init(NULL);
     if (ret != LIBUSB_SUCCESS) {
-        FATAL("libusb_init ret %d\n", ret);  // xxx change these to ERROR, and ret -1
+        ERROR("libusb_init ret %d\n", ret);
+        return -1;
     }
 
     // find the MCC-USB-204 usb device
@@ -105,7 +108,8 @@ int32_t mccdaq_init(void)
     g_usb_max_packet_size = usb_get_max_packet_size(g_udev,0);
     INFO("usb_max_packet_size = %d\n", g_usb_max_packet_size);
     if (g_usb_max_packet_size != 64) {
-        FATAL("usb_max_packet_size = %d\n", g_usb_max_packet_size);
+        ERROR("usb_max_packet_size = %d\n", g_usb_max_packet_size);
+        return -1;
     }
 
     // get the calibration date, and print
@@ -122,7 +126,8 @@ int32_t mccdaq_init(void)
     // allocate memory for producer
     g_data = calloc(MAX_DATA, sizeof(uint16_t));
     if (g_data == NULL) {
-        FATAL("calloc size %zd", MAX_DATA*sizeof(uint16_t));
+        ERROR("calloc size %zd", MAX_DATA*sizeof(uint16_t));
+        return -1;
     }
     g_produced = 0;
 
@@ -229,6 +234,7 @@ static void mccdaq_exit(void)
 
 // -----------------  MCCDAQ PRODUCER THREAD-----------------------------
 
+// xxx consider making this real time
 static void * mccdaq_producer_thread(void * cx) 
 {
     #define OPTIONS     0
@@ -273,7 +279,7 @@ static void * mccdaq_producer_thread(void * cx)
                                    &transferred_bytes, 
                                    TOUT_MS);
         status = usbStatus_USB20X(g_udev);
-        VERBOSE1("ret=%d length=%d transferred_byts=%d status=%d\n", 
+        VERBOSE2("ret=%d length=%d transferred_byts=%d status=%d\n", 
               ret, length, transferred_bytes, status);
 
         // print warning if transferred_bytes is odd
@@ -302,7 +308,7 @@ static void * mccdaq_producer_thread(void * cx)
             if (ret != LIBUSB_ERROR_PIPE && ret != 0) {
                 WARN("restarting, ret==%d status=0x%x\n", ret, status);
             } else {
-                VERBOSE1("restarting, ret==%d status=0x%x\n", ret, status); 
+                VERBOSE2("restarting, ret==%d status=0x%x\n", ret, status); 
             }
 
             libusb_clear_halt(g_udev, LIBUSB_ENDPOINT_IN|1);
@@ -312,7 +318,7 @@ static void * mccdaq_producer_thread(void * cx)
         }
 
         // make data available to consumer thread
-        g_produced += transferred_bytes / 2;
+        __sync_fetch_and_add(&g_produced, transferred_bytes / 2);
 
         // update data pointer to prepare for next call to libusb_bulk_transfer
         data += transferred_bytes / 2;
@@ -320,7 +326,7 @@ static void * mccdaq_producer_thread(void * cx)
             FATAL("data out of range, %zd\n", data-g_data);
         }
         if (data == g_data + MAX_DATA) {
-            VERBOSE1("resetting data to begining of circular buffer\n");
+            VERBOSE2("resetting data to begining of circular buffer\n");
             data = g_data;
         }
     }
@@ -404,14 +410,9 @@ static uint16_t g_sim_data[MAX_SIM_DATA];
 
 int libusb_init (void ** cx)
 {
-    uint16_t value = 2400;
-    int32_t i;
-
+    int i;
     for (i = 0; i < MAX_SIM_DATA; i++) {
-        g_sim_data[i] = value;
-        if ((i % 25) == 24) {
-            value = value + (i < MAX_SIM_DATA/2 ? 1 : -1);
-        }
+        g_sim_data[i] = 2200;;
     }
         
     return LIBUSB_SUCCESS;
@@ -443,12 +444,12 @@ int libusb_bulk_transfer (struct libusb_device_handle *dev_handle, unsigned char
         if ((count/25) & 1) {
             data[0] = 3000;
             data[1] = 2600;
-            data[2] = 2150;
+            data[2] = 2400;
             data[3] = 2300;
         } else {
             data[max_data/2+0] = 3000;
             data[max_data/2+1] = 2600;
-            data[max_data/2+2] = 2150;
+            data[max_data/2+2] = 2400;
             data[max_data/2+3] = 2300;
         }
     }
@@ -458,8 +459,8 @@ int libusb_bulk_transfer (struct libusb_device_handle *dev_handle, unsigned char
     *transferred = length;
 
     // delay 
-    us = max_data * 1000000L / FREQUENCY;
-    VERBOSE1("SLEEP %ld, MAX_DATA = %d\n", us, max_data);
+    us = (uint64_t)max_data * 1000000L / FREQUENCY;
+    VERBOSE2("SLEEP %lld, MAX_DATA = %d\n", us, max_data);
     usleep(us);
 
     // return success

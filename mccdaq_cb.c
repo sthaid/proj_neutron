@@ -1,6 +1,11 @@
 #include <common.h>
 
-// -----------------  MCCDAQ CALLBACK - NEUTRON DETECTOR PULSES  ---------------------
+static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx, 
+                                int32_t baseline, int16_t *data, int32_t max_data);
+static void print_plot_str(int32_t value, int32_t baseline);
+static uint64_t microsec_timer(void);
+
+// -----------------  MCCDAQ CALLBACK  ----------------------------
 
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 {
@@ -110,6 +115,17 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
             // increment neutron_count
             neutron_count++;
 
+            // if verbose logging is enabled and not more frequently than 
+            // once per second, print this pulse to the log file
+            if (verbose[1]) {
+                uint64_t time_now = microsec_timer();
+                static uint64_t time_last_pulse_print;
+                if (time_now > time_last_pulse_print + 1000000) {
+                    verbose_pulse_print(pulse_start_idx, pulse_end_idx, baseline, data, max_data);
+                    time_last_pulse_print = time_now;
+                }
+            }
+
             // done with this pulse
             pulse_start_idx = -1;
             pulse_end_idx = -1;
@@ -119,35 +135,17 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         idx++;
     }
 
-    // if time has incremented then
-    //   - publish neutron count
-    //   - reset variables for the next second 
-    // endif
+    // once per second do the following ...
     uint64_t time_now = time(NULL);
     static uint64_t time_last_published;
     if (time_now > time_last_published) {    
-        live_mode_set_neutron_count(time_now, neutron_count);
-        time_last_published = time_now;
-        RESET_FOR_NEXT_SEC;
-    }
-
-    // return 'continue-scanning' 
-    return 0;
-}
-
-// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-// xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-#if 0
-
-#if 0
         int32_t mccdaq_restart_count, baseline_mv;
 
-        // publish new neutron data
-        //XXX neutron_data_max_pulse = neutron_count;
+        // publish neutron count
+        live_mode_set_neutron_count(time_now, neutron_count);
         time_last_published = time_now;
 
-        // print warning if there are mccdaq_restarts, or other concerns
+        // check for conditions that warrant a warning message to be logged
         mccdaq_restart_count = mccdaq_get_restart_count();
         baseline_mv = (baseline - 2048) * 10000 / 2048;
         if (mccdaq_restart_count != 0 ||
@@ -157,60 +155,57 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
             WARN("mccdaq_restart_count=%d max_data=%d baseline_mv=%d\n",
                   mccdaq_restart_count, max_data, baseline_mv);
         }
-#endif
 
-#ifdef VERBOSE_INFO
-        // print info, and seperator line 
-        INFO("NEUTRON:  neutron_count=%d  mccdaq_samples=%d   mccdaq_restarts=%d   baseline_mv=%d\n",
-               neutron_count,
-               max_data, 
-               mccdaq_restart_count, 
-               baseline_mv);
-        BLANK_LINE;
-        INFO("===========================================\n");
-        BLANK_LINE;
-#endif
+        // verbose logging
+        VERBOSE0("neutron_count=%d   ADC samples=%d restarts=%d baseline=%d mV\n",
+                 neutron_count, max_data, mccdaq_restart_count, baseline_mv);
 
-// xxx move to routine
-#ifdef VERBOSE_PULSES
-            int32_t pulse_height, i;
-            int32_t pulse_start_idx_extended, pulse_end_idx_extended;
+        // reset variables for the next second 
+        RESET_FOR_NEXT_SEC;
+    }
 
-            // scan from start to end of pulse to determine pulse_height,
-            // where pulse_height is the height above the baseline
-            pulse_height = -1;
-            for (i = pulse_start_idx; i <= pulse_end_idx; i++) {
-                if (data[i] - baseline > pulse_height) {
-                    pulse_height = data[i] - baseline;
-                }
-            }
-            pulse_height = pulse_height * 10000 / 2048;  // convert to mv
+    // return 'continue-scanning' 
+    return 0;
+}
 
-            // print a plot of the pulse, but not more often than every 200 ms
-            static uint64_t last_pulse_print_time_us;
-            if (microsec_timer() - last_pulse_print_time_us > 200000) {
-                pulse_start_idx_extended = pulse_start_idx - 1;
-                pulse_end_idx_extended = pulse_end_idx + 4;
-                if (pulse_start_idx_extended < 0) {
-                    pulse_start_idx_extended = 0;
-                }
-                if (pulse_end_idx_extended >= max_data) {
-                    pulse_end_idx_extended = max_data-1;
-                }
+// -----------------  VERBOSE PRINT PULSE  ------------------------
 
-                INFO("PULSE:  height_mv = %d   baseline_mv = %d   (%d,%d,%d)\n",
-                     pulse_height, (baseline-2048)*10000/2048,
-                     pulse_start_idx_extended, pulse_end_idx_extended, max_data);
-                for (i = pulse_start_idx_extended; i <= pulse_end_idx_extended; i++) {
-                    print_plot_str((data[i]-2048)*10000/2048, (baseline-2048)*10000/2048); 
-                }
-                BLANK_LINE;
+static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx, 
+                                int32_t baseline, int16_t *data, int32_t max_data)
+{
+    int32_t pulse_height, i;
+    int32_t pulse_start_idx_extended, pulse_end_idx_extended;
 
-                last_pulse_print_time_us = microsec_timer();
-            }
-#endif
+    // scan from start to end of pulse to determine pulse_height,
+    // where pulse_height is the height above the baseline
+    pulse_height = -1;
+    for (i = pulse_start_idx; i <= pulse_end_idx; i++) {
+        if (data[i] - baseline > pulse_height) {
+            pulse_height = data[i] - baseline;
+        }
+    }
+    pulse_height = pulse_height * 10000 / 2048;  // convert to mv
 
-#ifdef VERBOSE_PULSES
+    // extend the span of the pulse plot so that some baseline values are also plotted
+    pulse_start_idx_extended = pulse_start_idx - 1;
+    pulse_end_idx_extended = pulse_end_idx + 4;
+    if (pulse_start_idx_extended < 0) {
+        pulse_start_idx_extended = 0;
+    }
+    if (pulse_end_idx_extended >= max_data) {
+        pulse_end_idx_extended = max_data-1;
+    }
+
+    // verbose print plot of the pulse
+    VERBOSE1("PULSE:  height_mv = %d   baseline_mv = %d   (%d,%d,%d)\n",
+         pulse_height, (baseline-2048)*10000/2048,
+         pulse_start_idx_extended, pulse_end_idx_extended, max_data);
+    for (i = pulse_start_idx_extended; i <= pulse_end_idx_extended; i++) {
+        print_plot_str((data[i]-2048)*10000/2048, (baseline-2048)*10000/2048); 
+    }
+    VERBOSE1("---------\n");
+}
+
 static void print_plot_str(int32_t value, int32_t baseline)
 {
     char    str[110];
@@ -223,11 +218,11 @@ static void print_plot_str(int32_t value, int32_t baseline)
     // idx = value / 100   : range  0 - 99            
 
     if (value > 9995) {
-        INFO("%5d: value is out of range\n", value);
+        VERBOSE1("%5d: value is out of range\n", value);
         return;
     }
     if (baseline < 0 || baseline > 9995) {
-        INFO("%5d: baseline is out of range\n", baseline);
+        VERBOSE1("%5d: baseline is out of range\n", baseline);
         return;
     }
 
@@ -254,7 +249,14 @@ static void print_plot_str(int32_t value, int32_t baseline)
         }
     }
 
-    INFO("%5d: %s\n", value, str);
+    VERBOSE1("%5d: %s\n", value, str);
 }
-#endif
-#endif
+
+static uint64_t microsec_timer(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC,&ts);
+    return  ((uint64_t)ts.tv_sec * 1000000) + ((uint64_t)ts.tv_nsec / 1000);
+}
+

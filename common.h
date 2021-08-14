@@ -33,12 +33,14 @@ bool verbose[MAX_VERBOSE];
 
 #define VERBOSE0(fmt, args...) do { if (verbose[0]) PRINT_COMMON("VERBOSE0", fmt, ## args); } while (0)
 #define VERBOSE1(fmt, args...) do { if (verbose[1]) PRINT_COMMON("VERBOSE1", fmt, ## args); } while (0)
-#define VERBOSE2(fmt, args...) do { if (verbose[2]) PRINT_COMMON("VERBOSE2", fmt, ## args); } while (3)
+#define VERBOSE2(fmt, args...) do { if (verbose[2]) PRINT_COMMON("VERBOSE2", fmt, ## args); } while (0)
 #define VERBOSE3(fmt, args...) do { if (verbose[3]) PRINT_COMMON("VERBOSE3", fmt, ## args); } while (0)
 
 #define FATAL(fmt, args...) do { PRINT_COMMON("FATAL", fmt, ## args); exit(1); } while (0)
 
 // -----------------  PROTOTYPES  -------------------
+
+typedef int32_t (*mccdaq_callback_t)(uint16_t * data, int32_t max_data);
 
 // main.c ...
 void live_mode_set_neutron_count(time_t time_now, int neutron_count);
@@ -48,7 +50,6 @@ char *time2str(time_t t, char *s, bool filename_format);
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d);
 
 // util_mccdaq.c ...
-typedef int32_t (*mccdaq_callback_t)(uint16_t * data, int32_t max_data);  // xxx elim
 int32_t mccdaq_init(void);
 int32_t  mccdaq_start(mccdaq_callback_t cb);
 int32_t  mccdaq_stop(void);

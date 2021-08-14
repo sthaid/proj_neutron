@@ -389,7 +389,7 @@ static void update_display(int maxy, int maxx)
     sprintf(cpm_str, "%0.3f CPM", cpm);
     color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
     attron(COLOR_PAIR(color));
-    mvprintw(23, BASE_X+MAX_X/2-strlen(cpm_str)/2, "%s", cpm_str);
+    mvprintw(24, BASE_X+MAX_X/2-strlen(cpm_str)/2, "%s", cpm_str);
     attroff(COLOR_PAIR(color));
 
     // print some variables

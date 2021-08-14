@@ -247,6 +247,18 @@ static void * mccdaq_producer_thread(void * cx)
 
     g_producer_thread_running = true;
 
+#if 0
+    // set realtime priority
+    struct sched_param param;
+    int rc;
+    memset(&param, 0, sizeof(param));
+    param.sched_priority = 80;
+    rc = sched_setscheduler(0, SCHED_FIFO, &param);
+    if (rc < 0) {
+        ERROR("sched_setscheduler, %s\n", strerror(errno));
+    }
+#endif
+
     // start the analog input scan
     usbAInScanStart_USB20X(g_udev, 0, FREQUENCY, 1<<CHANNEL, OPTIONS, 0, 0);
 

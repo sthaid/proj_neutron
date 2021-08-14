@@ -30,6 +30,7 @@ static bool      tracking;
 static FILE    * fp_dat;
 static bool      program_terminating;
 static pthread_t live_mode_write_cps_data_thread_id;
+static char      filename_dat[200];
 
 static time_t    cps_data_start_time;
 static int       cps_data[MAX_CPS];
@@ -88,7 +89,6 @@ int main(int argc, char **argv)
 
 static void initialize(int argc, char **argv)
 {
-    char filename_dat[100];
     char s[100];
 
     #define USAGE "usage: neutron [-p <filename.dat] [-v <select>] [-h]\n" \
@@ -385,14 +385,15 @@ static void update_display(int maxy, int maxx)
     // - GREEN: displaying the current value from the detector
     // - RED: displaying old value, either from playback file, or from
     //        having moved to an old value in the live data
-    sprintf(cpm_str, "%s - %0.3f CPM", MODE_STR(mode), cpm);
+    sprintf(cpm_str, "%0.3f CPM", cpm);
     color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
     attron(COLOR_PAIR(color));
     mvprintw(23, BASE_X+MAX_X/2-strlen(cpm_str)/2, "%s", cpm_str);
     attroff(COLOR_PAIR(color));
 
     // print interesting variables
-    mvprintw(29, 0, "maxx,y=%d,%d  y_max=%d  sec=%d  max_cps_data=%d  end_idx=%d",
+    mvprintw(27, 0, "%s  %s\n", MODE_STR(mode), filename_dat);
+    mvprintw(28, 0, "maxx,y=%d,%d  y_max=%d  sec=%d  max_cps_data=%d  end_idx=%d",
              maxx, maxy, Y_MAX, secs, max_cps_data, end_idx);
 }
 

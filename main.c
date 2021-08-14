@@ -366,6 +366,10 @@ static void update_display(int maxy, int maxx)
     time2str(end_time, end_time_str, false);
     mvprintw(MAX_Y+1, BASE_X-4, "%s", start_time_str+11);
     mvprintw(MAX_Y+1, BASE_X+MAX_X-4, "%s", end_time_str+11);
+    start_time_str[10] = '\0';
+    end_time_str[10] = '\0';
+    mvprintw(MAX_Y+2, BASE_X-4, "%s", start_time_str);
+    mvprintw(MAX_Y+2, BASE_X+MAX_X-6, "%s", end_time_str);
 
     // draw x axis time span, choose units dynamically
     time_span = end_time - start_time;
@@ -424,11 +428,12 @@ static int input_handler(int input_char)
         if (input_char == KEY_NPAGE) y_max_tbl_idx--;
         clip_value(&y_max_tbl_idx, 0, MAX_Y_MAX_TBL-1);
         break; }
-    case '+': case '=': case '-':
-        if (input_char == '+' || input_char == '=') secs++;
-        if (input_char == '-') secs--;
+    case '+': case '=': case '-': {
+        int incr = (secs >= 100 ? 10 : 1);
+        if (input_char == '+' || input_char == '=') secs += incr;
+        if (input_char == '-') secs -= incr;
         clip_value(&secs, 1, 86400/MAX_X);
-        break;
+        break; }
     case KEY_LEFT: case KEY_RIGHT: case ',': case '.': case '<': case '>': case KEY_HOME: case KEY_END:
         if (input_char == KEY_LEFT)   end_idx -= secs;
         if (input_char == KEY_RIGHT)  end_idx += secs;

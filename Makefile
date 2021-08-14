@@ -8,3 +8,6 @@ neutron: main.c util_mccdaq.c mccdaq_cb.c
 clean:
 	rm -f neutron
 
+clobber:
+	rm -f neutron neutron.log neutron*.dat
+

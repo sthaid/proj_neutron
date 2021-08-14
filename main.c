@@ -1,6 +1,3 @@
-// xxx test
-// - live mode using the simulated and the real ADC
-
 #include <common.h>
 
 //

@@ -38,8 +38,8 @@ static int       max_cps_data;
 //
 
 static void initialize(int argc, char **argv);
+static void sig_hndlr(int sig);
 static void * live_mode_write_cps_data_thread(void *cx);
-
 static void update_display(int maxy, int maxx);
 static double get_average_neutron_cps(int time_idx, int num_avg_secs);
 static int input_handler(int input_char);
@@ -141,6 +141,12 @@ static void initialize(int argc, char **argv)
         };
     }
 
+    // register signal handler, used to terminate program gracefully
+    static struct sigaction act;
+    act.sa_handler = sig_hndlr;
+    sigaction(SIGINT, &act, NULL);
+    sigaction(SIGTERM, &act, NULL);
+
     // log program starting
     INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n",
          MODE_STR(mode), filename_dat);
@@ -226,6 +232,11 @@ char *time2str(time_t t, char *s, bool filename_format)
                 result.tm_hour, result.tm_min, result.tm_sec);
     }
     return s;
+}
+
+static void sig_hndlr(int sig)
+{
+    curses_term_req = true;
 }
 
 // -----------------  SET NEUTRON COUNT  -----------------------------------------
@@ -341,7 +352,7 @@ static void update_display(int maxy, int maxx)
     mvprintw(MAX_Y,BASE_X-1, "+");
 
     // draw the neutron count rate plot
-    start_idx = end_idx - secs * MAX_X;
+    start_idx = end_idx - secs * (MAX_X - 1);
     idx = start_idx;
     for (x = BASE_X; x < BASE_X+MAX_X; x++) {
         double cps_data = get_average_neutron_cps(idx, secs);
@@ -360,7 +371,7 @@ static void update_display(int maxy, int maxx)
     mvprintw(MAX_Y, 0,   "%8d", 0);
 
     // draw x axis start and end times
-    start_time = cps_data_start_time + start_idx;
+    start_time = cps_data_start_time + start_idx - secs;
     end_time   = cps_data_start_time + end_idx;
     time2str(start_time, start_time_str, false);
     time2str(end_time, end_time_str, false);

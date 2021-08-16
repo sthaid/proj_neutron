@@ -6,10 +6,11 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
+#include <assert.h>
+#include <math.h>
 #include <pthread.h>
 #include <curses.h>
-#include <math.h>
-#include <assert.h>
 
 // -----------------  LOGGING  -----------------------
 

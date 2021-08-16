@@ -1,6 +1,6 @@
 #include <common.h>
 
-static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx, 
+static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx, int32_t pulse_height,
                                 int32_t baseline, int16_t *data, int32_t max_data);
 static void print_plot_str(int32_t value, int32_t baseline);
 static uint64_t microsec_timer(void);
@@ -17,7 +17,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
     static int32_t  baseline;
     static int32_t  neutron_count;
 
-    #define TUNE_PULSE_THRESHOLD  100 
+    #define MIN_PULSE_THRESHOLD  20   // times (10000/2048)  =>  ~100 mV
 
     #define RESET_FOR_NEXT_SEC \
         do { \
@@ -94,10 +94,10 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         }
 
         // determine the pulse_start_idx and pulse_end_idx
-        if (data[idx] >= (baseline + TUNE_PULSE_THRESHOLD) && pulse_start_idx == -1) {
+        if (data[idx] >= (baseline + MIN_PULSE_THRESHOLD) && pulse_start_idx == -1) {
             pulse_start_idx = idx;
         } else if (pulse_start_idx != -1) {
-            if (data[idx] < (baseline + TUNE_PULSE_THRESHOLD)) {
+            if (data[idx] < (baseline + MIN_PULSE_THRESHOLD)) {
                 pulse_end_idx = idx - 1;
             } else if (idx - pulse_start_idx >= 10) {
                 WARN("discarding a possible pulse because it's too long, pulse_start_idx=%d\n",
@@ -109,6 +109,14 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 
         // if a pulse has been located ...
         if (pulse_end_idx != -1) {
+            // determine pulse_height
+            int32_t i, pulse_height=-1;
+            for (i = pulse_start_idx; i <= pulse_end_idx; i++) {
+                if (data[i] - baseline > pulse_height) {
+                    pulse_height = data[i] - baseline;
+                }
+            }
+
             // increment neutron_count
             neutron_count++;
 
@@ -118,7 +126,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
                 uint64_t time_now = microsec_timer();
                 static uint64_t time_last_pulse_print;
                 if (time_now > time_last_pulse_print + 1000000) {
-                    verbose_pulse_print(pulse_start_idx, pulse_end_idx, baseline, data, max_data);
+                    verbose_pulse_print(pulse_start_idx, pulse_end_idx, pulse_height, baseline, data, max_data);
                     time_last_pulse_print = time_now;
                 }
             }
@@ -136,7 +144,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
     uint64_t time_now = time(NULL);
     static uint64_t time_last_published;
     if (time_now > time_last_published) {    
-        int32_t mccdaq_restart_count, baseline_mv;
+        int32_t mccdaq_restart_count;
 
         // publish neutron count
         live_mode_set_neutron_count(time_now, neutron_count);
@@ -144,18 +152,17 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 
         // check for conditions that warrant a warning message to be logged
         mccdaq_restart_count = mccdaq_get_restart_count();
-        baseline_mv = (baseline - 2048) * 10000 / 2048;
         if (mccdaq_restart_count > 1 ||
             max_data < 480000 || max_data > 520000 ||
-            baseline_mv < 1500 || baseline_mv > 1800)
+            baseline < 2350 || baseline > 2420)
         {
-            WARN("mccdaq_restart_count=%d max_data=%d baseline_mv=%d\n",
-                  mccdaq_restart_count, max_data, baseline_mv);
+            WARN("mccdaq_restart_count=%d max_data=%d baseline=%d\n",
+                  mccdaq_restart_count, max_data, baseline);
         }
 
         // verbose logging
         VERBOSE0("neutron_count=%d   ADC samples=%d restarts=%d baseline=%d mV\n",
-                 neutron_count, max_data, mccdaq_restart_count, baseline_mv);
+                 neutron_count, max_data, mccdaq_restart_count, baseline);
 
         // reset variables for the next second 
         RESET_FOR_NEXT_SEC;
@@ -167,21 +174,10 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 
 // -----------------  VERBOSE PRINT PULSE  ------------------------
 
-static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx, 
+static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx, int32_t pulse_height,
                                 int32_t baseline, int16_t *data, int32_t max_data)
 {
-    int32_t pulse_height, i;
-    int32_t pulse_start_idx_extended, pulse_end_idx_extended;
-
-    // scan from start to end of pulse to determine pulse_height,
-    // where pulse_height is the height above the baseline
-    pulse_height = -1;
-    for (i = pulse_start_idx; i <= pulse_end_idx; i++) {
-        if (data[i] - baseline > pulse_height) {
-            pulse_height = data[i] - baseline;
-        }
-    }
-    pulse_height = pulse_height * 10000 / 2048;  // convert to mv
+    int32_t i, pulse_start_idx_extended, pulse_end_idx_extended;
 
     // extend the span of the pulse plot so that some baseline values are also plotted
     pulse_start_idx_extended = pulse_start_idx - 1;
@@ -194,54 +190,38 @@ static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx,
     }
 
     // verbose print plot of the pulse
-    VERBOSE1("PULSE:  height_mv = %d   baseline_mv = %d   (%d,%d,%d)\n",
-         pulse_height, (baseline-2048)*10000/2048,
-         pulse_start_idx_extended, pulse_end_idx_extended, max_data);
+    VERBOSE1("PULSE:  height = %d   baseline = %d\n", pulse_height, baseline);
     for (i = pulse_start_idx_extended; i <= pulse_end_idx_extended; i++) {
-        print_plot_str((data[i]-2048)*10000/2048, (baseline-2048)*10000/2048); 
+        print_plot_str(data[i], baseline);
     }
     VERBOSE1("---------\n");
 }
 
 static void print_plot_str(int32_t value, int32_t baseline)
 {
-    char    str[110];
+    char    str[1000];
     int32_t idx, i;
 
-    // args are in mv units
-
-    // value               : expected range 0 - 9995 mv
-    // baseline            : expected range 0 - 9995 mv
-    // idx = value / 100   : range  0 - 99            
-
-    if (value > 9995) {
-        VERBOSE1("%5d: value is out of range\n", value);
-        return;
-    }
-    if (baseline < 0 || baseline > 9995) {
-        VERBOSE1("%5d: baseline is out of range\n", baseline);
-        return;
-    }
-
-    if (value < 0) {
-        value = 0;
-    }
+    value -= 2048;
+    baseline -= 2048;
 
     bzero(str, sizeof(str));
 
-    idx = value / 100;
+    idx = value / 10;
     for (i = 0; i <= idx; i++) {
         str[i] = '*';
     }
 
-    idx = baseline / 100;
-    if (str[idx] == '*') {
-        str[idx] = '+';
-    } else {
-        str[idx] = '|';
-        for (i = 0; i < idx; i++) {
-            if (str[i] == '\0') {
-                str[i] = ' ';
+    idx = baseline / 10;
+    if (idx >= 0) {
+        if (str[idx] == '*') {
+            str[idx] = '+';
+        } else {
+            str[idx] = '|';
+            for (i = 0; i < idx; i++) {
+                if (str[i] == '\0') {
+                    str[i] = ' ';
+                }
             }
         }
     }

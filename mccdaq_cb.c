@@ -11,19 +11,19 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 {
     #define MAX_DATA 1000000
 
-    static int16_t  data[MAX_DATA];
-    static int32_t  max_data;
-    static int32_t  idx;
-    static int32_t  baseline;
-    static int32_t  neutron_count;
+    static int16_t       data[MAX_DATA];
+    static int32_t       max_data;
+    static int32_t       idx;
+    static int32_t       baseline;
+    static pulse_count_t pulse_count;
 
-    #define MIN_PULSE_THRESHOLD  20   // times (10000/2048)  =>  ~100 mV
+    #define MIN_PULSE_HEIGHT  10   // x (10000/2048)  ~= 50 mV
 
     #define RESET_FOR_NEXT_SEC \
         do { \
             max_data = 0; \
             idx = 0; \
-            neutron_count = 0; \
+            memset(&pulse_count,0,sizeof(pulse_count)); \
         } while (0)
 
     // if max_data too big then 
@@ -94,10 +94,10 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         }
 
         // determine the pulse_start_idx and pulse_end_idx
-        if (data[idx] >= (baseline + MIN_PULSE_THRESHOLD) && pulse_start_idx == -1) {
+        if (data[idx] >= (baseline + MIN_PULSE_HEIGHT) && pulse_start_idx == -1) {
             pulse_start_idx = idx;
         } else if (pulse_start_idx != -1) {
-            if (data[idx] < (baseline + MIN_PULSE_THRESHOLD)) {
+            if (data[idx] < (baseline + MIN_PULSE_HEIGHT)) {
                 pulse_end_idx = idx - 1;
             } else if (idx - pulse_start_idx >= 10) {
                 WARN("discarding a possible pulse because it's too long, pulse_start_idx=%d\n",
@@ -116,12 +116,18 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
                     pulse_height = data[i] - baseline;
                 }
             }
+            assert(pulse_height >= MIN_PULSE_HEIGHT);
 
-            // increment neutron_count
-            neutron_count++;
+            // increment pulse_count histogram bucket
+            int bucket_idx = pulse_height / BUCKET_SIZE;
+            if (bucket_idx >= MAX_BUCKET) {
+                bucket_idx = MAX_BUCKET-1;
+            }
+            pulse_count.bucket[bucket_idx]++;
 
             // if verbose logging is enabled and not more frequently than 
             // once per second, print this pulse to the log file
+            // xxx may want to print the larger pulses?
             if (verbose[1]) {
                 uint64_t time_now = microsec_timer();
                 static uint64_t time_last_pulse_print;
@@ -146,8 +152,8 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
     if (time_now > time_last_published) {    
         int32_t mccdaq_restart_count;
 
-        // publish neutron count
-        live_mode_set_neutron_count(time_now, neutron_count);
+        // publish the pulse_count histogram for this one second interval
+        publish(time_now, &pulse_count);
         time_last_published = time_now;
 
         // check for conditions that warrant a warning message to be logged
@@ -161,8 +167,9 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         }
 
         // verbose logging
-        VERBOSE0("neutron_count=%d   ADC samples=%d restarts=%d baseline=%d mV\n",
-                 neutron_count, max_data, mccdaq_restart_count, baseline);
+        // xxx maybe print the total 
+        VERBOSE0("ADC samples=%d restarts=%d baseline=%d mV\n",
+                 max_data, mccdaq_restart_count, baseline);
 
         // reset variables for the next second 
         RESET_FOR_NEXT_SEC;

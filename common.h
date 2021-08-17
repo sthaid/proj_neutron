@@ -41,11 +41,17 @@ bool verbose[MAX_VERBOSE];
 
 // -----------------  PROTOTYPES  -------------------
 
+#define MAX_BUCKET  30
+#define BUCKET_SIZE  5
+typedef struct {
+    int bucket[MAX_BUCKET];
+} pulse_count_t;
+
 typedef int32_t (*mccdaq_callback_t)(uint16_t * data, int32_t max_data);
 
 // main.c ...
-void live_mode_set_neutron_count(time_t time_now, int neutron_count);
-char *time2str(time_t t, char *s, bool filename_format);
+void publish(time_t time_now, pulse_count_t *pc);
+char *time2str(time_t t, char *s, bool filename_format);  // xxx add utils.c
 
 // mccdaq_cb.c ...
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d);

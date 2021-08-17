@@ -232,23 +232,6 @@ static void initialize(int argc, char **argv)
     fp_log2 = NULL;
 }
 
-char *time2str(time_t t, char *s, bool filename_format)
-{
-    // example: 2021-08-21_19-21-22
-    struct tm result;
-    localtime_r(&t, &result);
-    if (filename_format) {
-        sprintf(s, "%4d-%02d-%02d_%02d-%02d-%02d",
-                result.tm_year+1900, result.tm_mon+1, result.tm_mday, 
-                result.tm_hour, result.tm_min, result.tm_sec);
-    } else {
-        sprintf(s, "%4d/%02d/%02d %02d:%02d:%02d",
-                result.tm_year+1900, result.tm_mon+1, result.tm_mday, 
-                result.tm_hour, result.tm_min, result.tm_sec);
-    }
-    return s;
-}
-
 static void sig_hndlr(int sig)
 {
     curses_term_req = true;

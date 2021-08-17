@@ -51,7 +51,6 @@ typedef int32_t (*mccdaq_callback_t)(uint16_t * data, int32_t max_data);
 
 // main.c ...
 void publish(time_t time_now, pulse_count_t *pc);
-char *time2str(time_t t, char *s, bool filename_format);  // xxx add utils.c
 
 // mccdaq_cb.c ...
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d);
@@ -61,4 +60,8 @@ int32_t mccdaq_init(void);
 int32_t  mccdaq_start(mccdaq_callback_t cb);
 int32_t  mccdaq_stop(void);
 int32_t mccdaq_get_restart_count(void);
+
+// utils.c ...
+uint64_t microsec_timer(void);
+char *time2str(time_t t, char *s, bool filename_format);
 

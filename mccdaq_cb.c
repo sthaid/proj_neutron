@@ -3,7 +3,6 @@
 static void verbose_pulse_print(int32_t pulse_start_idx, int32_t pulse_end_idx, int32_t pulse_height,
                                 int32_t baseline, int16_t *data, int32_t max_data);
 static void print_plot_str(int32_t value, int32_t baseline);
-static uint64_t microsec_timer(void);
 
 // -----------------  MCCDAQ CALLBACK  ----------------------------
 
@@ -234,13 +233,5 @@ static void print_plot_str(int32_t value, int32_t baseline)
     }
 
     VERBOSE1("%5d: %s\n", value, str);
-}
-
-static uint64_t microsec_timer(void)
-{
-    struct timespec ts;
-
-    clock_gettime(CLOCK_MONOTONIC,&ts);
-    return  ((uint64_t)ts.tv_sec * 1000000) + ((uint64_t)ts.tv_nsec / 1000);
 }
 

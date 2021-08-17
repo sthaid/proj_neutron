@@ -1,3 +1,7 @@
+// xxx
+// - params
+//    's', 'r'
+//    display them
 #include <common.h>
 
 //
@@ -8,30 +12,45 @@
 
 #define MODE_LIVE      0
 #define MODE_PLAYBACK  1
+#define MODE_STR(x)    ((x) == MODE_LIVE ? "LIVE" : "PLAYBACK")
 
-#define MODE_STR(x) \
-    ((x) == MODE_LIVE     ? "LIVE"     : \
-     (x) == MODE_PLAYBACK ? "PLAYBACK"   \
-                          : "????")
+#define DISPLAY_PLOT      0
+#define DISPLAY_HISTOGRAM 1
+
+#define DEFAULT_SECS         1
+#define DEFAULT_MIN_BUCKET   6   // xxx or maybe use pulse_height instead of bucket number
+#define DEFAULT_Y_MAX      100  // must be an entry in y_max_tbl
 
 //
 // typedefs
 //
 
+
 //
 // variables
 //
 
+// variables ...
 static int            mode;
 static bool           tracking;
-static FILE         * fp_dat;
+static int            display_select;
+static int            end_idx;
 static bool           program_terminating;
-static pthread_t      live_mode_write_data_thread_id;
-static char           filename_dat[200];
 
+// neutron pulse count data ...
 static time_t         data_start_time;
 static pulse_count_t  data[MAX_DATA];
 static int            max_data;
+
+// save neutron pulse count data to file ...
+static char           filename_dat[200];
+static FILE         * fp_dat;
+static pthread_t      live_mode_write_data_thread_id;
+
+// params ...
+static int secs       = DEFAULT_SECS;
+static int min_bucket = DEFAULT_MIN_BUCKET;
+static int y_max      = DEFAULT_Y_MAX;
 
 //
 // prototypes
@@ -41,8 +60,8 @@ static void initialize(int argc, char **argv);
 static void sig_hndlr(int sig);
 static void * live_mode_write_data_thread(void *cx);
 static void update_display(int maxy, int maxx);
-static void update_display1(void);
-static void update_display2(void);
+static void update_display_plot(void);
+static void update_display_histogram(void);
 static double get_average_cpm(int time_idx, int first_bucket, int last_bucket);
 static int input_handler(int input_char);
 static void clip_value(int *v, int min, int max);
@@ -147,8 +166,7 @@ static void initialize(int argc, char **argv)
     sigaction(SIGTERM, &act, NULL);
 
     // log program starting
-    INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n",
-         MODE_STR(mode), filename_dat);
+    INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n", MODE_STR(mode), filename_dat);
 
     // if mode is PLAYBACK then
     //   read data from filename_dat
@@ -312,34 +330,10 @@ static void * live_mode_write_data_thread(void *cx)
 
 // -----------------  CURSES WRAPPER CALLBACKS  ----------------------------
 
-// xxx cleanup
-
-// y axis scale
-#define DEFAULT_Y_MAX_TBL_IDX  1  // xxx was 10
-#define Y_MAX (y_max_tbl[y_max_tbl_idx])
-static int y_max_tbl[] = { 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000, };
-static int y_max_tbl_idx = DEFAULT_Y_MAX_TBL_IDX;
-
-// x axis scale
-// - number of seconds of data averaged togethor
-#define DEFAULT_SECS 120  // xxx was 1
-
 // define plot area size and position
 #define MAX_Y  20
 #define MAX_X  60
 #define BASE_X 11
-
-// max y axis (cpm) table
-static int secs  = DEFAULT_SECS;
-static int end_idx;  // will be initialized on first call to update_display
-
-// xxx or maybe use pulse_height instead of bucket number
-
-// xxxxxxxxxx
-#define DEFAULT_MIN_BUCKET 6
-static int min_bucket = DEFAULT_MIN_BUCKET;
-
-static int display_select = 1;  // xxx comment
 
 static void update_display(int maxy, int maxx)
 {
@@ -368,17 +362,18 @@ static void update_display(int maxy, int maxx)
     mvprintw(MAX_Y,BASE_X-1, "+");
 
     // draw the y axis labels
-    mvprintw(0, 0,       "%8d", Y_MAX);
-    mvprintw(MAX_Y/2, 0, "%8d", Y_MAX/2);
+    mvprintw(0, 0,       "%8d", y_max);
+    mvprintw(MAX_Y/2, 0, "%8d", y_max/2);
     mvprintw(MAX_Y, 0,   "%8d", 0);
+    mvprintw(5, 3,       "CPM");
 
-    // xxx
+    // display either the neutron count plot or histogram
     switch (display_select) {
-    case 1: 
-        update_display1();
+    case DISPLAY_PLOT:
+        update_display_plot();
         break;
-    case 2: 
-        update_display2();
+    case DISPLAY_HISTOGRAM:
+        update_display_histogram();
         break;
     }
 
@@ -401,11 +396,10 @@ static void update_display(int maxy, int maxx)
     // xxx more vars, such as buckets, and maybe don't need maxx,y these could be printed first time to log file
     mvprintw(27, 0, "%s  %s\n", MODE_STR(mode), filename_dat);
     mvprintw(28, 0, "maxx,y=%d,%d  y_max=%d  sec=%d  max_data=%d  end_idx=%d",
-             maxx, maxy, Y_MAX, secs, max_data, end_idx);
+             maxx, maxy, y_max, secs, max_data, end_idx);
 }
 
-// xxx label y axis 'CPM'
-static void update_display1(void)
+static void update_display_plot(void)
 {
     int    x, y, idx, start_idx, time_span;
     time_t start_time, end_time;
@@ -417,7 +411,7 @@ static void update_display1(void)
     for (x = BASE_X; x < BASE_X+MAX_X; x++) {
         double cpm = get_average_cpm(idx, min_bucket, MAX_BUCKET-1);
         if (cpm != -1) {
-            y = nearbyint(MAX_Y * (1 - cpm / Y_MAX));
+            y = nearbyint(MAX_Y * (1 - cpm / y_max));
             if (y < 0) y = 0;
             mvprintw(y,x,"*");
         }
@@ -450,9 +444,7 @@ static void update_display1(void)
 
 // xxx
 // - label x axis with time and bucket numbers
-// - label y axis same as display1
-// - use green or red if included
-static void update_display2(void)
+static void update_display_histogram(void)
 {
     int i, x, y, yy, color;
     double cpm;
@@ -463,7 +455,7 @@ static void update_display2(void)
             continue;
         }
         x = BASE_X + 2 * i;
-        y = nearbyint(MAX_Y * (1 - cpm / Y_MAX));
+        y = nearbyint(MAX_Y * (1 - cpm / y_max));
         if (y < 0) y = 0;
 
         if (i >= min_bucket) {
@@ -482,9 +474,10 @@ static void update_display2(void)
     }
 }
 
-// xxx comment
-// returns averaged data, or -1 if time_idx is out of range;
-// the average is computed startint at time_idx, and working back for secs values
+// Returns a cpm value that is the average cpm over the range time_idx-secs+1 ... time_idx.
+// For each time in this range the cpm for that time is computed by summing over the
+//  specified range of histogram buckets.
+// If time_idx is out of range, then -1 is returned.
 static double get_average_cpm(int time_idx, int first_bucket, int last_bucket)
 {
     int i, j, sum=0;
@@ -493,11 +486,11 @@ static double get_average_cpm(int time_idx, int first_bucket, int last_bucket)
     assert(last_bucket >= 0 && last_bucket < MAX_BUCKET);
     assert(last_bucket >= first_bucket);
 
-    if (time_idx+1 < secs || time_idx >= max_data) {
+    if (time_idx-secs+1 < 0 || time_idx >= max_data) {
         return -1;
     }
 
-    for (i = time_idx; i > time_idx - secs; i--) {
+    for (i = time_idx-secs+1; i <= time_idx; i++) {
         for (j = first_bucket; j <= last_bucket; j++) {
             sum += data[i].bucket[j];
         }
@@ -516,9 +509,18 @@ static int input_handler(int input_char)
         return -1; // terminates pgm
     case KEY_NPAGE: case KEY_PPAGE: {
         #define MAX_Y_MAX_TBL (sizeof(y_max_tbl)/sizeof(y_max_tbl[0]))
-        if (input_char == KEY_PPAGE) y_max_tbl_idx++;
-        if (input_char == KEY_NPAGE) y_max_tbl_idx--;
-        clip_value(&y_max_tbl_idx, 0, MAX_Y_MAX_TBL-1);
+        static int y_max_tbl[] = { 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000, };
+        int i;
+        for (i = 0; i < MAX_Y_MAX_TBL; i++) {
+            if (y_max == y_max_tbl[i]) {
+                break;
+            }
+        }
+        assert(i < MAX_Y_MAX_TBL);
+        if (input_char == KEY_PPAGE) i++;
+        if (input_char == KEY_NPAGE) i--;
+        clip_value(&i, 0, MAX_Y_MAX_TBL-1);
+        y_max = y_max_tbl[i];
         break; }
     case '+': case '=': case '-': {
         int incr = (secs >= 100 ? 10 : 1);
@@ -529,7 +531,7 @@ static int input_handler(int input_char)
     case KEY_LEFT: case KEY_RIGHT: case ',': case '.': case '<': case '>': case KEY_HOME: case KEY_END:
         if (input_char == KEY_LEFT)   end_idx -= secs;
         if (input_char == KEY_RIGHT)  end_idx += secs;
-        if (input_char == ',')        end_idx -= 60; 
+        if (input_char == ',')        end_idx -= 60;   // xxx also need single secs
         if (input_char == '.')        end_idx += 60; 
         if (input_char == '<')        end_idx -= 3600; 
         if (input_char == '>')        end_idx += 3600; 
@@ -542,13 +544,12 @@ static int input_handler(int input_char)
         display_select = input_char - KEY_F0;
         break;
     case 'r':
-        y_max_tbl_idx = DEFAULT_Y_MAX_TBL_IDX;
-        secs          = DEFAULT_SECS;
-        end_idx       = _max_data-1;
-        tracking      = (mode == MODE_LIVE && end_idx == _max_data-1);
+        y_max    = DEFAULT_Y_MAX;
+        secs     = DEFAULT_SECS;
+        end_idx  = _max_data-1;
+        tracking = (mode == MODE_LIVE && end_idx == _max_data-1);
         break;
     }
-//xxx mode for histogram vs cpm
 
     return 0;  // do not terminate pgm
 }

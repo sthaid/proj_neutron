@@ -118,7 +118,8 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
             assert(pulse_height >= MIN_PULSE_HEIGHT);
 
             // increment pulse_count histogram bucket
-            int bucket_idx = pulse_height / BUCKET_SIZE;
+            // xxx incorporate all this in the macro
+            int bucket_idx = PULSE_HEIGHT_TO_BUCKET_IDX(pulse_height);
             if (bucket_idx >= MAX_BUCKET) {
                 bucket_idx = MAX_BUCKET-1;
             }

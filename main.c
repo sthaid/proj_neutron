@@ -1,7 +1,11 @@
-// xxx
-// - params
-//    's', 'r'
-//    display them
+// xxx todo ...
+// - testing
+//
+// xxx maybe todo ...
+// - save and restore params
+
+// xxx change SECS to AVG_INTVL
+
 #include <common.h>
 
 //
@@ -17,9 +21,9 @@
 #define DISPLAY_PLOT      0
 #define DISPLAY_HISTOGRAM 1
 
-#define DEFAULT_SECS         1
-#define DEFAULT_MIN_BUCKET   6   // xxx or maybe use pulse_height instead of bucket number
-#define DEFAULT_Y_MAX      100  // must be an entry in y_max_tbl
+#define DEFAULT_SECS      5  
+#define DEFAULT_PHT       30    // PHT = Pulse Height Threshold
+#define DEFAULT_Y_MAX     1000  // must be an entry in y_max_tbl
 
 //
 // typedefs
@@ -48,9 +52,9 @@ static FILE         * fp_dat;
 static pthread_t      live_mode_write_data_thread_id;
 
 // params ...
-static int secs       = DEFAULT_SECS;
-static int min_bucket = DEFAULT_MIN_BUCKET;
-static int y_max      = DEFAULT_Y_MAX;
+static int secs   = DEFAULT_SECS;
+static int pht    = DEFAULT_PHT;
+static int y_max  = DEFAULT_Y_MAX;
 
 //
 // prototypes
@@ -58,18 +62,23 @@ static int y_max      = DEFAULT_Y_MAX;
 
 static void initialize(int argc, char **argv);
 static void sig_hndlr(int sig);
+static void clip_value(int *v, int min, int max);
+static void read_neutron_params(void);
+static void write_neutron_params(void);
+
 static void * live_mode_write_data_thread(void *cx);
 static void update_display(int maxy, int maxx);
 static void update_display_plot(void);
 static void update_display_histogram(void);
+static void print_centered(int y, int ctrx, int color, char *fmt, ...) __attribute__((format(printf, 4, 5)));
 static double get_average_cpm(int time_idx, int first_bucket, int last_bucket);
 static int input_handler(int input_char);
-static void clip_value(int *v, int min, int max);
 
 //
 // curses wrapper definitions
 //
 
+#define COLOR_PAIR_NONE  0
 #define COLOR_PAIR_RED   1
 #define COLOR_PAIR_GREEN 2
 #define COLOR_PAIR_CYAN  3
@@ -83,7 +92,7 @@ static void curses_init(void);
 static void curses_exit(void);
 static void curses_runtime(void (*update_display)(int maxy, int maxx), int (*input_handler)(int input_char));
 
-// -----------------  MAIN & INITIALIZE  -----------------------------------------
+// -----------------  MAIN & INITIALIZE & UTILS  ---------------------------------
 
 int main(int argc, char **argv)
 {
@@ -159,14 +168,18 @@ static void initialize(int argc, char **argv)
         };
     }
 
+    // log program starting
+    INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n", MODE_STR(mode), filename_dat);
+
     // register signal handler, used to terminate program gracefully
     static struct sigaction act;
     act.sa_handler = sig_hndlr;
     sigaction(SIGINT, &act, NULL);
     sigaction(SIGTERM, &act, NULL);
 
-    // log program starting
-    INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n", MODE_STR(mode), filename_dat);
+    // init the param values (pht, secs, y_max) from the neutron.params file;
+    // note that this file will not exist until written using the 'w' cmd
+    read_neutron_params();
 
     // if mode is PLAYBACK then
     //   read data from filename_dat
@@ -253,6 +266,49 @@ static void initialize(int argc, char **argv)
 static void sig_hndlr(int sig)
 {
     curses_term_req = true;
+}
+
+static void clip_value(int *v, int min, int max)
+{
+    if (*v < min) *v = min;
+    if (*v > max) *v = max;
+}
+
+static void read_neutron_params(void)
+{
+    FILE *fp;
+    char s[100] = {0};
+    int cnt;
+
+    INFO("reading neutron.params\n");
+
+    fp = fopen("neutron.params", "r");
+    if (fp == NULL) {
+        WARN("failed to open neutron.params for reading\n");
+        return;
+    }
+    fgets(s, sizeof(s), fp);
+    fclose(fp);
+
+    cnt = sscanf(s, "pht=%d secs=%d y_max=%d\n", &pht, &secs, &y_max);
+    if (cnt != 3) {
+        ERROR("contents of neutron.params is invalid\n");
+    }
+}
+
+static void write_neutron_params(void)
+{
+    FILE *fp;
+
+    INFO("writing neutron.params\n");
+
+    fp = fopen("neutron.params", "w");
+    if (fp == NULL) {
+        ERROR("failed to open neutron.params for writing\n");
+        return;
+    }
+    fprintf(fp, "pht=%d secs=%d y_max=%d\n", pht, secs, y_max);
+    fclose(fp);
 }
 
 // -----------------  LIVE MODE ROUTINES  ----------------------------------------
@@ -342,6 +398,7 @@ static void update_display(int maxy, int maxx)
 
     // initialize on first call
     if (first_call) {
+        INFO("maxx = %d  maxy = %d\n", maxx, maxy);
         end_idx = max_data - 1;
         memset(x_axis, '-', MAX_X);
         first_call = false;
@@ -381,22 +438,18 @@ static void update_display(int maxy, int maxx)
     // - GREEN: displaying the current value from the detector
     // - RED: displaying old value, either from playback file, or from
     //        having moved to an old value in the live data
-    double cpm = get_average_cpm(end_idx, min_bucket, MAX_BUCKET-1);
+    double cpm = get_average_cpm(end_idx, PULSE_HEIGHT_TO_BUCKET_IDX(pht), MAX_BUCKET-1);
     if (cpm != -1) {
-        int color;
-        char cpm_str[100];
-        sprintf(cpm_str, "%0.3f CPM", cpm);
-        color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
-        attron(COLOR_PAIR(color));
-        mvprintw(24, BASE_X+MAX_X/2-strlen(cpm_str)/2, "%s", cpm_str);
-        attroff(COLOR_PAIR(color));
+        int color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
+        print_centered(24, 40, color, "%0.3f CPM", cpm);
     }
 
-    // print some variables
-    // xxx more vars, such as buckets, and maybe don't need maxx,y these could be printed first time to log file
-    mvprintw(27, 0, "%s  %s\n", MODE_STR(mode), filename_dat);
-    mvprintw(28, 0, "maxx,y=%d,%d  y_max=%d  sec=%d  max_data=%d  end_idx=%d",
-             maxx, maxy, y_max, secs, max_data, end_idx);
+    // print params, mode, filename_dat, and max_data
+    mvprintw(24, 0, "pht   = %d", pht);
+    mvprintw(25, 0, "secs  = %d", secs);
+    mvprintw(26, 0, "y_max = %d", y_max);
+    print_centered(27, 40, COLOR_PAIR_NONE, "%s", MODE_STR(mode));
+    print_centered(28, 40, COLOR_PAIR_NONE, "%s - %d", filename_dat, max_data);
 }
 
 static void update_display_plot(void)
@@ -409,7 +462,7 @@ static void update_display_plot(void)
     start_idx = end_idx - secs * (MAX_X - 1);
     idx = start_idx;
     for (x = BASE_X; x < BASE_X+MAX_X; x++) {
-        double cpm = get_average_cpm(idx, min_bucket, MAX_BUCKET-1);
+        double cpm = get_average_cpm(idx, PULSE_HEIGHT_TO_BUCKET_IDX(pht), MAX_BUCKET-1);
         if (cpm != -1) {
             y = nearbyint(MAX_Y * (1 - cpm / y_max));
             if (y < 0) y = 0;
@@ -442,36 +495,53 @@ static void update_display_plot(void)
     mvprintw(MAX_Y+1, BASE_X+MAX_X/2-strlen(time_span_str)/2, "%s", time_span_str);
 }
 
-// xxx
-// - label x axis with time and bucket numbers
 static void update_display_histogram(void)
 {
     int i, x, y, yy, color;
     double cpm;
 
-    for (i = 0; i < MAX_BUCKET; i++) {
+    for (i = 2; i < MAX_BUCKET; i++) {  // xxx '2'
         cpm = get_average_cpm(end_idx, i, i);
         if (cpm == -1) {
             continue;
         }
+
         x = BASE_X + 2 * i;
         y = nearbyint(MAX_Y * (1 - cpm / y_max));
         if (y < 0) y = 0;
 
-        if (i >= min_bucket) {
+        if (i == 2 || i == MAX_BUCKET/2 || i == MAX_BUCKET-1) {
+            print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(i));
+        }
+
+        if (i >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
             color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
             attron(COLOR_PAIR(color));
         }
-
         for (yy = y; yy <= MAX_Y; yy++) {
             mvprintw(yy,x,"*");
         }
-
-        if (i >= min_bucket) {
+        if (i >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
             color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
             attroff(COLOR_PAIR(color));
         }
     }
+}
+
+static void print_centered(int y, int ctrx, int color, char *fmt, ...)
+{
+    va_list ap;
+    int len;
+    char str[200];
+
+    va_start(ap, fmt);
+    vsprintf(str, fmt, ap);
+    va_end(ap);
+    len = strlen(str);
+
+    if (color != COLOR_PAIR_NONE) attron(COLOR_PAIR(color));
+    mvprintw(y, ctrx-len/2, "%s", str);
+    if (color != COLOR_PAIR_NONE) attroff(COLOR_PAIR(color));
 }
 
 // Returns a cpm value that is the average cpm over the range time_idx-secs+1 ... time_idx.
@@ -506,10 +576,12 @@ static int input_handler(int input_char)
     // process input_char
     switch (input_char) {
     case 4: case 'q':
-        return -1; // terminates pgm
+        // terminate program on ^d or q
+        return -1;
     case KEY_NPAGE: case KEY_PPAGE: {
+        // adjust y_max
         #define MAX_Y_MAX_TBL (sizeof(y_max_tbl)/sizeof(y_max_tbl[0]))
-        static int y_max_tbl[] = { 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000, };
+        static int y_max_tbl[] = { 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000, };  // cpm
         int i;
         for (i = 0; i < MAX_Y_MAX_TBL; i++) {
             if (y_max == y_max_tbl[i]) {
@@ -522,13 +594,21 @@ static int input_handler(int input_char)
         clip_value(&i, 0, MAX_Y_MAX_TBL-1);
         y_max = y_max_tbl[i];
         break; }
-    case '+': case '=': case '-': {
+    case '-': case '=': {
+        // adjust secs
         int incr = (secs >= 100 ? 10 : 1);
-        if (input_char == '+' || input_char == '=') secs += incr;
         if (input_char == '-') secs -= incr;
-        clip_value(&secs, 1, 86400/MAX_X);
+        if (input_char == '=') secs += incr;
+        clip_value(&secs, 1, 3600);
         break; }
+    case '1': case '2':
+        // adjust pht (pulse height threshold)
+        if (input_char == '1') pht -= BUCKET_SIZE;
+        if (input_char == '2') pht += BUCKET_SIZE;
+        clip_value(&pht, MIN_PULSE_HEIGHT, MAX_PULSE_HEIGHT);
+        break;
     case KEY_LEFT: case KEY_RIGHT: case ',': case '.': case '<': case '>': case KEY_HOME: case KEY_END:
+        // adjust end_idx
         if (input_char == KEY_LEFT)   end_idx -= secs;
         if (input_char == KEY_RIGHT)  end_idx += secs;
         if (input_char == ',')        end_idx -= 60;   // xxx also need single secs
@@ -541,23 +621,30 @@ static int input_handler(int input_char)
         tracking = (mode == MODE_LIVE && end_idx == _max_data-1);
         break;
     case KEY_F0+1: case KEY_F0+2: 
-        display_select = input_char - KEY_F0;
+        // select plot or historgram display
+        display_select = (input_char == KEY_F0+1 ? DISPLAY_PLOT : DISPLAY_HISTOGRAM);
         break;
-    case 'r':
+    case 'w': case 'r':
+        // read or wrie parameters
+        if (input_char == 'r') {
+            read_neutron_params();
+        } else {
+            write_neutron_params();
+        }
+        break;
+    case 'R':
+        // reset
         y_max    = DEFAULT_Y_MAX;
         secs     = DEFAULT_SECS;
+        pht      = DEFAULT_PHT;
+        write_neutron_params();
+
         end_idx  = _max_data-1;
         tracking = (mode == MODE_LIVE && end_idx == _max_data-1);
         break;
     }
 
     return 0;  // do not terminate pgm
-}
-
-static void clip_value(int *v, int min, int max)
-{
-    if (*v < min) *v = min;
-    if (*v > max) *v = max;
 }
 
 // -----------------  CURSES WRAPPER  ----------------------------------------

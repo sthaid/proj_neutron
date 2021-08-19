@@ -1,7 +1,10 @@
 // xxx todo ...
 // - testing
-//
-// xxx change SECS to AVG_INTVL
+// - review
+// - comments
+// - documentation
+
+// xxx print the time span of the histogram
 
 #include <common.h>
 
@@ -18,7 +21,7 @@
 #define DISPLAY_PLOT      0
 #define DISPLAY_HISTOGRAM 1
 
-#define DEFAULT_SECS      5  
+#define DEFAULT_AVG_INTVL 5  
 #define DEFAULT_PHT       30    // PHT = Pulse Height Threshold
 #define DEFAULT_Y_MAX     1000  // must be an entry in y_max_tbl
 
@@ -49,9 +52,9 @@ static FILE         * fp_dat;
 static pthread_t      live_mode_write_data_thread_id;
 
 // params ...
-static int secs   = DEFAULT_SECS;
-static int pht    = DEFAULT_PHT;
-static int y_max  = DEFAULT_Y_MAX;
+static int avg_intvl = DEFAULT_AVG_INTVL;
+static int pht       = DEFAULT_PHT;
+static int y_max     = DEFAULT_Y_MAX;
 
 //
 // prototypes
@@ -175,7 +178,7 @@ static void initialize(int argc, char **argv)
     sigaction(SIGINT, &act, NULL);
     sigaction(SIGTERM, &act, NULL);
 
-    // init the param values (pht, secs, y_max) from the neutron.params file;
+    // init the param values (pht, avg_intvl, y_max) from the neutron.params file;
     // note that this file will not exist until written using the 'w' cmd
     read_neutron_params();
 
@@ -286,7 +289,7 @@ static void read_neutron_params(void)
     fgets(s, sizeof(s), fp);
     fclose(fp);
 
-    cnt = sscanf(s, "pht=%d secs=%d y_max=%d\n", &pht, &secs, &y_max);
+    cnt = sscanf(s, "pht=%d avg_intvl=%d y_max=%d\n", &pht, &avg_intvl, &y_max);
     if (cnt != 3) {
         ERROR("contents of neutron.params is invalid\n");
     }
@@ -303,7 +306,7 @@ static void write_neutron_params(void)
         ERROR("failed to open neutron.params for writing\n");
         return;
     }
-    fprintf(fp, "pht=%d secs=%d y_max=%d\n", pht, secs, y_max);
+    fprintf(fp, "pht=%d avg_intvl=%d y_max=%d\n", pht, avg_intvl, y_max);
     fclose(fp);
 }
 
@@ -434,9 +437,9 @@ static void update_display(int maxy, int maxx)
     }
 
     // print params, mode, filename_dat, and max_data
-    mvprintw(24, 0, "pht   = %d", pht);
-    mvprintw(25, 0, "secs  = %d", secs);
-    mvprintw(26, 0, "y_max = %d", y_max);
+    mvprintw(24, 0, "pht       = %d", pht);
+    mvprintw(25, 0, "avg_intvl = %d", avg_intvl);
+    mvprintw(26, 0, "y_max     = %d", y_max);
     print_centered(27, 40, COLOR_PAIR_NONE, "%s", MODE_STR(mode));
     print_centered(28, 40, COLOR_PAIR_NONE, "%s - %d", filename_dat, max_data);
 }
@@ -448,7 +451,7 @@ static void update_display_plot(void)
     char   start_time_str[100], end_time_str[100], time_span_str[100];
 
     // draw the neutron count rate plot
-    start_idx = end_idx - secs * (MAX_X - 1);
+    start_idx = end_idx - avg_intvl * (MAX_X - 1);
     idx = start_idx;
     for (x = BASE_X; x < BASE_X+MAX_X; x++) {
         double cpm = get_average_cpm_for_pht(idx);
@@ -457,11 +460,11 @@ static void update_display_plot(void)
             if (y < 0) y = 0;
             mvprintw(y,x,"*");
         }
-        idx += secs;
+        idx += avg_intvl;
     }
 
     // draw x axis start and end times
-    start_time = data_start_time + start_idx - secs;
+    start_time = data_start_time + start_idx - avg_intvl;
     end_time   = data_start_time + end_idx;
     time2str(start_time, start_time_str, false);
     time2str(end_time, end_time_str, false);
@@ -488,8 +491,9 @@ static void update_display_histogram(void)
 {
     int bidx, x, y, yy, color;
     double cpm;
+    const int first_bucket = PULSE_HEIGHT_TO_BUCKET_IDX(MIN_PULSE_HEIGHT);
 
-    for (bidx = 2; bidx < MAX_BUCKET; bidx++) {  // xxx '2'
+    for (bidx = first_bucket; bidx < MAX_BUCKET; bidx++) {
         cpm = get_average_cpm_for_bucket(end_idx, bidx);
         if (cpm == -1) {
             continue;
@@ -499,7 +503,7 @@ static void update_display_histogram(void)
         y = nearbyint(MAX_Y * (1 - cpm / y_max));
         if (y < 0) y = 0;
 
-        if (bidx == 2 || bidx == MAX_BUCKET/2 || bidx == MAX_BUCKET-1) {
+        if (bidx == first_bucket || bidx == MAX_BUCKET/2 || bidx == MAX_BUCKET-1) {
             print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(bidx));
         }
 
@@ -533,26 +537,26 @@ static void print_centered(int y, int ctrx, int color, char *fmt, ...)
     if (color != COLOR_PAIR_NONE) attroff(COLOR_PAIR(color));
 }
 
-// Return cpm value that is the average for the specified bucket idx (bidx),
-//  over the time range time_idx-secs+1 to time_idx;
+// Return cpm value that is the average for the specified bucket idx,
+//  over the time range time_idx-avg_intvl+1 to time_idx;
 // Return -1 if time_idx is not valid.
 static double get_average_cpm_for_bucket(int time_idx, int bidx)
 {
     int i, sum=0;
 
-    if (time_idx-secs+1 < 0 || time_idx >= max_data) {
+    if (time_idx-avg_intvl+1 < 0 || time_idx >= max_data) {
         return -1;
     }
 
-    for (i = time_idx-secs+1; i <= time_idx; i++) {
+    for (i = time_idx-avg_intvl+1; i <= time_idx; i++) {
         sum += data[i].bucket[bidx];
     }
 
-    return ((double)sum / secs) * 60;
+    return ((double)sum / avg_intvl) * 60;
 }
 
 // Return cpm value that is the average for the sum of all buckets >= pht,
-//  over the time range time_idx-secs+1 to time_idx;
+//  over the time range time_idx-avg_intvl+1 to time_idx;
 // Return -1 if time_idx is not valid.
 static double get_average_cpm_for_pht(int time_idx)
 {
@@ -568,11 +572,11 @@ static double get_average_cpm_for_pht(int time_idx)
         cached_sum.pht = pht;
     }
 
-    if (time_idx-secs+1 < 0 || time_idx >= max_data) {
+    if (time_idx-avg_intvl+1 < 0 || time_idx >= max_data) {
         return -1;
     }
 
-    for (i = time_idx-secs+1; i <= time_idx; i++) {
+    for (i = time_idx-avg_intvl+1; i <= time_idx; i++) {
         if (cached_sum.value[i] != -1) {
             sum += cached_sum.value[i];
         } else {
@@ -585,7 +589,7 @@ static double get_average_cpm_for_pht(int time_idx)
         }
     }
 
-    return ((double)sum / secs) * 60;
+    return ((double)sum / avg_intvl) * 60;
 }
 
 static int input_handler(int input_char)
@@ -614,11 +618,11 @@ static int input_handler(int input_char)
         y_max = y_max_tbl[i];
         break; }
     case '-': case '=': {
-        // adjust secs
-        int incr = (secs >= 100 ? 10 : 1);
-        if (input_char == '-') secs -= incr;
-        if (input_char == '=') secs += incr;
-        clip_value(&secs, 1, 3600);
+        // adjust avg_intvl
+        int incr = (avg_intvl >= 100 ? 10 : 1);
+        if (input_char == '-') avg_intvl -= incr;
+        if (input_char == '=') avg_intvl += incr;
+        clip_value(&avg_intvl, 1, 3600);
         break; }
     case '1': case '2':
         // adjust pht (pulse height threshold)
@@ -626,14 +630,20 @@ static int input_handler(int input_char)
         if (input_char == '2') pht += BUCKET_SIZE;
         clip_value(&pht, MIN_PULSE_HEIGHT, MAX_PULSE_HEIGHT);
         break;
-    case KEY_LEFT: case KEY_RIGHT: case ',': case '.': case '<': case '>': case KEY_HOME: case KEY_END:
+    case KEY_LEFT: case KEY_RIGHT: 
+    case ',': case '.': 
+    case '<': case '>': 
+    case 'k': case 'l': 
+    case KEY_HOME: case KEY_END:
         // adjust end_idx
-        if (input_char == KEY_LEFT)   end_idx -= secs;
-        if (input_char == KEY_RIGHT)  end_idx += secs;
-        if (input_char == ',')        end_idx -= 60;   // xxx also need single secs
-        if (input_char == '.')        end_idx += 60; 
-        if (input_char == '<')        end_idx -= 3600; 
-        if (input_char == '>')        end_idx += 3600; 
+        if (input_char == KEY_LEFT)   end_idx -= avg_intvl;
+        if (input_char == KEY_RIGHT)  end_idx += avg_intvl;
+        if (input_char == ',')        end_idx -= 1;
+        if (input_char == '.')        end_idx += 1; 
+        if (input_char == '<')        end_idx -= 60; 
+        if (input_char == '>')        end_idx += 60; 
+        if (input_char == 'k')        end_idx -= 3600; 
+        if (input_char == 'l')        end_idx += 3600; 
         if (input_char == KEY_HOME)   end_idx  = 0;
         if (input_char == KEY_END)    end_idx  = _max_data-1;
         clip_value(&end_idx, 0, _max_data-1);
@@ -653,9 +663,9 @@ static int input_handler(int input_char)
         break;
     case 'R':
         // reset
-        y_max    = DEFAULT_Y_MAX;
-        secs     = DEFAULT_SECS;
-        pht      = DEFAULT_PHT;
+        y_max     = DEFAULT_Y_MAX;
+        avg_intvl = DEFAULT_AVG_INTVL;
+        pht       = DEFAULT_PHT;
         write_neutron_params();
 
         end_idx  = _max_data-1;

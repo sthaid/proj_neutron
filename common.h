@@ -41,7 +41,7 @@ bool verbose[MAX_VERBOSE];
 
 // -----------------  PROTOTYPES  -------------------
 
-#define MAX_BUCKET        30
+#define MAX_BUCKET        60
 #define BUCKET_SIZE       5
 #define MIN_PULSE_HEIGHT  10
 #define MAX_PULSE_HEIGHT  (BUCKET_IDX_TO_PULSE_HEIGHT(MAX_BUCKET-1))

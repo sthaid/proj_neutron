@@ -1,9 +1,6 @@
 // xxx todo ...
 // - testing
 //
-// xxx maybe todo ...
-// - save and restore params
-
 // xxx change SECS to AVG_INTVL
 
 #include <common.h>
@@ -12,7 +9,7 @@
 // defines
 //
 
-#define MAX_DATA (30*86400)
+#define MAX_DATA (20*86400)
 
 #define MODE_LIVE      0
 #define MODE_PLAYBACK  1
@@ -71,7 +68,8 @@ static void update_display(int maxy, int maxx);
 static void update_display_plot(void);
 static void update_display_histogram(void);
 static void print_centered(int y, int ctrx, int color, char *fmt, ...) __attribute__((format(printf, 4, 5)));
-static double get_average_cpm(int time_idx, int first_bucket, int last_bucket);
+static double get_average_cpm_for_bucket(int time_idx, int bidx);
+static double get_average_cpm_for_pht(int time_idx);
 static int input_handler(int input_char);
 
 //
@@ -190,7 +188,7 @@ static void initialize(int argc, char **argv)
     //           Ludlum 2929 amplifier output.
     // endif
     if (mode == MODE_PLAYBACK) {
-        int line=0, time_idx, cnt;
+        int line=0, time_idx;
         pulse_count_t pc;
         char s[1000];
 
@@ -206,19 +204,17 @@ static void initialize(int argc, char **argv)
                     FATAL("invalid line %d in %s\n", line, filename_dat);
                 }
             } else {
-                cnt = sscanf(s, "%d - "
-                                "%d %d %d %d %d %d %d %d %d %d "
-                                "%d %d %d %d %d %d %d %d %d %d "
-                                "%d %d %d %d %d %d %d %d %d %d ",
-                             &time_idx,
-                             &pc.bucket[0], &pc.bucket[1], &pc.bucket[2], &pc.bucket[3], &pc.bucket[4],
-                             &pc.bucket[5], &pc.bucket[6], &pc.bucket[7], &pc.bucket[8], &pc.bucket[9],
-                             &pc.bucket[10], &pc.bucket[11], &pc.bucket[12], &pc.bucket[13], &pc.bucket[14],
-                             &pc.bucket[15], &pc.bucket[16], &pc.bucket[17], &pc.bucket[18], &pc.bucket[19],
-                             &pc.bucket[20], &pc.bucket[21], &pc.bucket[22], &pc.bucket[23], &pc.bucket[24],
-                             &pc.bucket[25], &pc.bucket[26], &pc.bucket[27], &pc.bucket[28], &pc.bucket[29]);
-                if (cnt != MAX_BUCKET+1) {
+                char *p = s;
+                int i, chars;
+                if (sscanf(p, "%d - %n", &time_idx, &chars) != 1) {
                     FATAL("invalid line %d in %s\n", line, filename_dat);
+                }
+                p += chars;
+                for (i = 0; i < MAX_BUCKET; i++) {
+                    if (sscanf(p, "%d %n", &pc.bucket[i], &chars) != 1) {
+                        FATAL("invalid line %d in %s\n", line, filename_dat);
+                    }
+                    p += chars;
                 }
                 if (time_idx < 0 || time_idx >= MAX_DATA) {
                     FATAL("time_idx %d out of range\n", time_idx);
@@ -339,7 +335,7 @@ void publish(time_t time_now, pulse_count_t *pc)
 
 static void * live_mode_write_data_thread(void *cx)
 {
-    int        time_idx;
+    int        time_idx, i;
     bool       terminate;
     static int last_time_idx_written = -1;
 
@@ -354,18 +350,11 @@ static void * live_mode_write_data_thread(void *cx)
         // write new neutron count data entries to the file
         for (time_idx = last_time_idx_written+1; time_idx < max_data; time_idx++) {
             pulse_count_t *pc = &data[time_idx];
-            fprintf(fp_dat, "%d - "
-                             "%d %d %d %d %d %d %d %d %d %d "
-                             "%d %d %d %d %d %d %d %d %d %d "
-                             "%d %d %d %d %d %d %d %d %d %d "
-                             "\n",
-                    time_idx,
-                    pc->bucket[0], pc->bucket[1], pc->bucket[2], pc->bucket[3], pc->bucket[4],
-                    pc->bucket[5], pc->bucket[6], pc->bucket[7], pc->bucket[8], pc->bucket[9],
-                    pc->bucket[10], pc->bucket[11], pc->bucket[12], pc->bucket[13], pc->bucket[14],
-                    pc->bucket[15], pc->bucket[16], pc->bucket[17], pc->bucket[18], pc->bucket[19],
-                    pc->bucket[20], pc->bucket[21], pc->bucket[22], pc->bucket[23], pc->bucket[24],
-                    pc->bucket[25], pc->bucket[26], pc->bucket[27], pc->bucket[28], pc->bucket[29]);
+            fprintf(fp_dat, "%d - ", time_idx);
+            for (i = 0; i < MAX_BUCKET; i++) {
+                fprintf(fp_dat, "%d ", pc->bucket[i]);
+            }
+            fprintf(fp_dat, "\n");
             last_time_idx_written = time_idx;
         }
 
@@ -438,7 +427,7 @@ static void update_display(int maxy, int maxx)
     // - GREEN: displaying the current value from the detector
     // - RED: displaying old value, either from playback file, or from
     //        having moved to an old value in the live data
-    double cpm = get_average_cpm(end_idx, PULSE_HEIGHT_TO_BUCKET_IDX(pht), MAX_BUCKET-1);
+    double cpm = get_average_cpm_for_pht(end_idx);
     if (cpm != -1) {
         int color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
         print_centered(24, 40, color, "%0.3f CPM", cpm);
@@ -462,7 +451,7 @@ static void update_display_plot(void)
     start_idx = end_idx - secs * (MAX_X - 1);
     idx = start_idx;
     for (x = BASE_X; x < BASE_X+MAX_X; x++) {
-        double cpm = get_average_cpm(idx, PULSE_HEIGHT_TO_BUCKET_IDX(pht), MAX_BUCKET-1);
+        double cpm = get_average_cpm_for_pht(idx);
         if (cpm != -1) {
             y = nearbyint(MAX_Y * (1 - cpm / y_max));
             if (y < 0) y = 0;
@@ -497,31 +486,31 @@ static void update_display_plot(void)
 
 static void update_display_histogram(void)
 {
-    int i, x, y, yy, color;
+    int bidx, x, y, yy, color;
     double cpm;
 
-    for (i = 2; i < MAX_BUCKET; i++) {  // xxx '2'
-        cpm = get_average_cpm(end_idx, i, i);
+    for (bidx = 2; bidx < MAX_BUCKET; bidx++) {  // xxx '2'
+        cpm = get_average_cpm_for_bucket(end_idx, bidx);
         if (cpm == -1) {
             continue;
         }
 
-        x = BASE_X + 2 * i;
+        x = BASE_X + bidx;
         y = nearbyint(MAX_Y * (1 - cpm / y_max));
         if (y < 0) y = 0;
 
-        if (i == 2 || i == MAX_BUCKET/2 || i == MAX_BUCKET-1) {
-            print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(i));
+        if (bidx == 2 || bidx == MAX_BUCKET/2 || bidx == MAX_BUCKET-1) {
+            print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(bidx));
         }
 
-        if (i >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
+        if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
             color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
             attron(COLOR_PAIR(color));
         }
         for (yy = y; yy <= MAX_Y; yy++) {
             mvprintw(yy,x,"*");
         }
-        if (i >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
+        if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
             color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
             attroff(COLOR_PAIR(color));
         }
@@ -544,25 +533,55 @@ static void print_centered(int y, int ctrx, int color, char *fmt, ...)
     if (color != COLOR_PAIR_NONE) attroff(COLOR_PAIR(color));
 }
 
-// Returns a cpm value that is the average cpm over the range time_idx-secs+1 ... time_idx.
-// For each time in this range the cpm for that time is computed by summing over the
-//  specified range of histogram buckets.
-// If time_idx is out of range, then -1 is returned.
-static double get_average_cpm(int time_idx, int first_bucket, int last_bucket)
+// Return cpm value that is the average for the specified bucket idx (bidx),
+//  over the time range time_idx-secs+1 to time_idx;
+// Return -1 if time_idx is not valid.
+static double get_average_cpm_for_bucket(int time_idx, int bidx)
 {
-    int i, j, sum=0;
-
-    assert(first_bucket >= 0 && first_bucket < MAX_BUCKET);
-    assert(last_bucket >= 0 && last_bucket < MAX_BUCKET);
-    assert(last_bucket >= first_bucket);
+    int i, sum=0;
 
     if (time_idx-secs+1 < 0 || time_idx >= max_data) {
         return -1;
     }
 
     for (i = time_idx-secs+1; i <= time_idx; i++) {
-        for (j = first_bucket; j <= last_bucket; j++) {
-            sum += data[i].bucket[j];
+        sum += data[i].bucket[bidx];
+    }
+
+    return ((double)sum / secs) * 60;
+}
+
+// Return cpm value that is the average for the sum of all buckets >= pht,
+//  over the time range time_idx-secs+1 to time_idx;
+// Return -1 if time_idx is not valid.
+static double get_average_cpm_for_pht(int time_idx)
+{
+    int i, sum=0;
+
+    static struct {
+        int pht;
+        int value[MAX_DATA];
+    } cached_sum;
+
+    if (cached_sum.pht != pht) {
+        memset(cached_sum.value, 0xff, sizeof(cached_sum.value));
+        cached_sum.pht = pht;
+    }
+
+    if (time_idx-secs+1 < 0 || time_idx >= max_data) {
+        return -1;
+    }
+
+    for (i = time_idx-secs+1; i <= time_idx; i++) {
+        if (cached_sum.value[i] != -1) {
+            sum += cached_sum.value[i];
+        } else {
+            int j, x=0;
+            for (j = PULSE_HEIGHT_TO_BUCKET_IDX(pht); j < MAX_BUCKET; j++) {
+                x += data[i].bucket[j];
+            }
+            cached_sum.value[i] = x;
+            sum += x;
         }
     }
 

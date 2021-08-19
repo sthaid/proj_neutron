@@ -15,6 +15,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
     static int32_t       idx;
     static int32_t       baseline;
     static pulse_count_t pulse_count;
+    static int32_t       total_pulses;
 
     #define MIN_PULSE_HEIGHT  10   // x (10000/2048)  ~= 50 mV
 
@@ -23,6 +24,7 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
             max_data = 0; \
             idx = 0; \
             memset(&pulse_count,0,sizeof(pulse_count)); \
+            total_pulses = 0; \
         } while (0)
 
     // if max_data too big then 
@@ -124,10 +126,10 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
                 bucket_idx = MAX_BUCKET-1;
             }
             pulse_count.bucket[bucket_idx]++;
+            total_pulses++;
 
             // if verbose logging is enabled and not more frequently than 
             // once per second, print this pulse to the log file
-            // xxx may want to print the larger pulses?
             if (verbose[1]) {
                 uint64_t time_now = microsec_timer();
                 static uint64_t time_last_pulse_print;
@@ -167,9 +169,8 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
         }
 
         // verbose logging
-        // xxx maybe print the total 
-        VERBOSE0("ADC samples=%d restarts=%d baseline=%d mV\n",
-                 max_data, mccdaq_restart_count, baseline);
+        VERBOSE0("ADC samples=%d restarts=%d baseline=%d total_pulses=%d\n",
+                 max_data, mccdaq_restart_count, baseline, total_pulses);
 
         // reset variables for the next second 
         RESET_FOR_NEXT_SEC;

@@ -4,8 +4,6 @@
 // - comments
 // - documentation
 
-// xxx print the time span of the histogram
-
 #include <common.h>
 
 //
@@ -484,7 +482,7 @@ static void update_display_plot(void)
     } else {
         sprintf(time_span_str, "<--%.3f hours-->", time_span/3600.);
     }
-    mvprintw(MAX_Y+1, BASE_X+MAX_X/2-strlen(time_span_str)/2, "%s", time_span_str);
+    print_centered(MAX_Y+1, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", time_span_str);
 }
 
 static void update_display_histogram(void)
@@ -503,10 +501,6 @@ static void update_display_histogram(void)
         y = nearbyint(MAX_Y * (1 - cpm / y_max));
         if (y < 0) y = 0;
 
-        if (bidx == first_bucket || bidx == MAX_BUCKET/2 || bidx == MAX_BUCKET-1) {
-            print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(bidx));
-        }
-
         if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
             color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
             attron(COLOR_PAIR(color));
@@ -518,6 +512,19 @@ static void update_display_histogram(void)
             color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
             attroff(COLOR_PAIR(color));
         }
+
+        if (bidx == first_bucket || bidx == MAX_BUCKET/2 || bidx == MAX_BUCKET-1) {
+            print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(bidx));
+        }
+
+        time_t start_time, end_time;
+        char   start_time_str[100], end_time_str[100], str[100];
+        start_time = data_start_time + end_idx - avg_intvl;
+        end_time   = data_start_time + end_idx;
+        time2str(start_time, start_time_str, false);
+        time2str(end_time, end_time_str, false);
+        sprintf(str, "%s to %s", start_time_str+11, end_time_str+11);
+        print_centered(MAX_Y+2, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", str);
     }
 }
 

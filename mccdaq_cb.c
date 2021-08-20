@@ -6,6 +6,8 @@ static void print_plot_str(int32_t value, int32_t baseline);
 
 // -----------------  MCCDAQ CALLBACK  ----------------------------
 
+// xxx comment
+
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 {
     #define MAX_DATA 1000000

@@ -10,7 +10,10 @@ uint64_t microsec_timer(void)
 
 char *time2str(time_t t, char *s, bool filename_format)
 {
-    // example: 2021-08-21_19-21-22
+    // example: 
+    // - filename_format == true:   2021-08-21_19-21-22
+    // - filename_format == false:  2021/08/21 19:21:22
+
     struct tm result;
     localtime_r(&t, &result);
     if (filename_format) {

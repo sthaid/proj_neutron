@@ -1,8 +1,12 @@
 // xxx todo ...
+// - review & comments
 // - testing
-// - review
-// - comments
 // - documentation
+// - README.md
+
+// xxxx
+// - what should default pht be
+// - histogram uses a lot of cpu
 
 #include <common.h>
 
@@ -193,6 +197,8 @@ static void initialize(int argc, char **argv)
         pulse_count_t pc;
         char s[1000];
 
+        // PLAYBACK mode init ...
+
         // read filename_dat
         fp_dat = fopen(filename_dat, "r");
         if (fp_dat == NULL) {
@@ -207,6 +213,7 @@ static void initialize(int argc, char **argv)
             } else {
                 char *p = s;
                 int i, chars;
+
                 if (sscanf(p, "%d - %n", &time_idx, &chars) != 1) {
                     FATAL("invalid line %d in %s\n", line, filename_dat);
                 }
@@ -217,9 +224,11 @@ static void initialize(int argc, char **argv)
                     }
                     p += chars;
                 }
+
                 if (time_idx < 0 || time_idx >= MAX_DATA) {
                     FATAL("time_idx %d out of range\n", time_idx);
                 }
+                // xxx warn if time_idx not in sequence
                 data[time_idx] = pc;
                 max_data = time_idx+1;
             }
@@ -228,6 +237,8 @@ static void initialize(int argc, char **argv)
         fp_dat = NULL;
         INFO("max_data = %d\n", max_data);
     } else {
+        // LIVE mode init ...
+
         // init mccdaq utils
         int rc = mccdaq_init();
         if (rc < 0) {
@@ -291,6 +302,8 @@ static void read_neutron_params(void)
     if (cnt != 3) {
         ERROR("contents of neutron.params is invalid\n");
     }
+
+    INFO("   pht=%d  avg_intvl=%d  y_max=%d\n", pht, avg_intvl, y_max);
 }
 
 static void write_neutron_params(void)
@@ -322,9 +335,9 @@ void publish(time_t time_now, pulse_count_t *pc)
 
     // sanity check, that the time_now is 1 greater than at last call
     static time_t time_last;
-    time_t delta_time = time_now - time_last;
+    int delta_time = time_now - time_last;
     if (time_last != 0 && delta_time != 1) {
-        WARN("unexpected delta_time %ld, should be 1\n", delta_time);
+        WARN("unexpected delta_time %d, should be 1\n", delta_time);
     }
     time_last = time_now;
 
@@ -340,6 +353,7 @@ static void * live_mode_write_data_thread(void *cx)
     bool       terminate;
     static int last_time_idx_written = -1;
 
+// xxx rename time_idx tidx throughout
     // file should already been opened in initialize()
     assert(fp_dat);
 
@@ -394,8 +408,10 @@ static void update_display(int maxy, int maxx)
         first_call = false;
     }
 
+// xxx only for plot
     // if tracking is enabled then update end_idx so that the latest
-    // neutron count data is displayed
+    // neutron count data is displayed; note that tracking can only be
+    // set when in LIVE mode
     if (tracking) {
         end_idx = max_data - 1;
     }
@@ -424,10 +440,12 @@ static void update_display(int maxy, int maxx)
         break;
     }
 
+// xxx end_idx issue
+// xxx move to plot routine
     // draw neutron cpm; color is:
-    // - GREEN: displaying the current value from the detector
+    // - GREEN: displaying the current value from the detector, in LIVE mode
     // - RED: displaying old value, either from playback file, or from
-    //        having moved to an old value in the live data
+    //        having moved to an old value in the LIVE mode data
     double cpm = get_average_cpm_for_pht(end_idx);
     if (cpm != -1) {
         int color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
@@ -487,20 +505,49 @@ static void update_display_plot(void)
 
 static void update_display_histogram(void)
 {
-    int bidx, x, y, yy, color;
+    int bidx, x, y, yy, color, start_idx;
     double cpm;
     const int first_bucket = PULSE_HEIGHT_TO_BUCKET_IDX(MIN_PULSE_HEIGHT);
 
+    // xxx also print span
+    // xxx end_idx problem
+    // xxx comments
+    // xxx need another y_tbl entry for histograms
+    // xxx the min pht should be higher, I think
+    // xxx takes too much time
+    // xxx another ytbl entry needed
     for (bidx = first_bucket; bidx < MAX_BUCKET; bidx++) {
+#if 0
         cpm = get_average_cpm_for_bucket(end_idx, bidx);
         if (cpm == -1) {
             continue;
         }
+#else
+        // xxx call idx tidx
+        //    xxx don't use this ..
+        start_idx = end_idx - avg_intvl * (MAX_X - 1);
+        double sum_cpm = 0, tmp_cpm;
+        int n = 0, idx;
+        for (idx = start_idx; idx <= end_idx; idx+=avg_intvl) {
+            tmp_cpm = get_average_cpm_for_bucket(idx, bidx);
+            if (tmp_cpm != -1) {
+                sum_cpm += tmp_cpm;
+                n++;
+            } else {
+                start_idx += avg_intvl;
+            }
+        }
+        if (n == 0) {
+            continue;
+        }
+        cpm = sum_cpm / n;
+#endif
 
         x = BASE_X + bidx;
         y = nearbyint(MAX_Y * (1 - cpm / y_max));
         if (y < 0) y = 0;
 
+// xxx don't use trackng here, pick a different color
         if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
             color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
             attron(COLOR_PAIR(color));
@@ -517,9 +564,10 @@ static void update_display_histogram(void)
             print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(bidx));
         }
 
+        // xxx comments,  and print span here
         time_t start_time, end_time;
         char   start_time_str[100], end_time_str[100], str[100];
-        start_time = data_start_time + end_idx - avg_intvl;
+        start_time = data_start_time + start_idx - avg_intvl;
         end_time   = data_start_time + end_idx;
         time2str(start_time, start_time_str, false);
         time2str(end_time, end_time_str, false);
@@ -555,6 +603,7 @@ static double get_average_cpm_for_bucket(int time_idx, int bidx)
         return -1;
     }
 
+    // xxx can this be cached
     for (i = time_idx-avg_intvl+1; i <= time_idx; i++) {
         sum += data[i].bucket[bidx];
     }
@@ -574,6 +623,7 @@ static double get_average_cpm_for_pht(int time_idx)
         int value[MAX_DATA];
     } cached_sum;
 
+// xxx func of avg_intvl and pht  idxed by tidx
     if (cached_sum.pht != pht) {
         memset(cached_sum.value, 0xff, sizeof(cached_sum.value));
         cached_sum.pht = pht;
@@ -637,11 +687,12 @@ static int input_handler(int input_char)
         if (input_char == '2') pht += BUCKET_SIZE;
         clip_value(&pht, MIN_PULSE_HEIGHT, MAX_PULSE_HEIGHT);
         break;
-    case KEY_LEFT: case KEY_RIGHT: 
-    case ',': case '.': 
-    case '<': case '>': 
-    case 'k': case 'l': 
-    case KEY_HOME: case KEY_END:
+    case KEY_LEFT: case KEY_RIGHT:   // end_idx adjusted by:  avg_intvl
+    case ',': case '.':              // end_idx adjusted by:  1 second
+    case '<': case '>':              // end_idx adjusted by:  60 secs
+    case 'k': case 'l':              // end_idx adjusted by:  3600 secs
+    case KEY_HOME:                   // end_idx = start-of-data
+    case KEY_END:                    // end_idx = end-of-data
         // adjust end_idx
         if (input_char == KEY_LEFT)   end_idx -= avg_intvl;
         if (input_char == KEY_RIGHT)  end_idx += avg_intvl;

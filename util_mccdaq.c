@@ -234,7 +234,6 @@ static void mccdaq_exit(void)
 
 // -----------------  MCCDAQ PRODUCER THREAD-----------------------------
 
-// xxx consider making this real time
 static void * mccdaq_producer_thread(void * cx) 
 {
     #define OPTIONS     0
@@ -247,7 +246,7 @@ static void * mccdaq_producer_thread(void * cx)
 
     g_producer_thread_running = true;
 
-#if 0
+#if 0  // note - this did not seem to lessen the mccdaq restarts
     // set realtime priority
     struct sched_param param;
     int rc;

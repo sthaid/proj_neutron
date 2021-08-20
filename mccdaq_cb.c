@@ -7,6 +7,7 @@ static void print_plot_str(int32_t value, int32_t baseline);
 // -----------------  MCCDAQ CALLBACK  ----------------------------
 
 // xxx comment
+// xxx    // x (10000/2048)  ~= 50 mV
 
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 {
@@ -18,8 +19,6 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
     static int32_t       baseline;
     static pulse_count_t pulse_count;
     static int32_t       total_pulses;
-
-    #define MIN_PULSE_HEIGHT  10   // x (10000/2048)  ~= 50 mV
 
     #define RESET_FOR_NEXT_SEC \
         do { \
@@ -122,12 +121,8 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
             assert(pulse_height >= MIN_PULSE_HEIGHT);
 
             // increment pulse_count histogram bucket
-            // xxx incorporate all this in the macro
-            int bucket_idx = PULSE_HEIGHT_TO_BUCKET_IDX(pulse_height);
-            if (bucket_idx >= MAX_BUCKET) {
-                bucket_idx = MAX_BUCKET-1;
-            }
-            pulse_count.bucket[bucket_idx]++;
+            int bidx = PULSE_HEIGHT_TO_BUCKET_IDX(pulse_height);
+            pulse_count.bucket[bidx]++;
             total_pulses++;
 
             // if verbose logging is enabled and not more frequently than 

@@ -3,10 +3,8 @@
 // - testing
 // - documentation
 // - README.md
-
-// xxxx
-// - what should default pht be
 // - histogram uses a lot of cpu
+// - the dat file takes a long time to read
 
 #include <common.h>
 
@@ -24,13 +22,12 @@
 #define DISPLAY_HISTOGRAM 1
 
 #define DEFAULT_AVG_INTVL 5  
-#define DEFAULT_PHT       30    // PHT = Pulse Height Threshold
+#define DEFAULT_PHT       40    // PHT = Pulse Height Threshold
 #define DEFAULT_Y_MAX     1000  // must be an entry in y_max_tbl
 
 //
 // typedefs
 //
-
 
 //
 // variables
@@ -73,6 +70,7 @@ static void update_display(int maxy, int maxx);
 static void update_display_plot(void);
 static void update_display_histogram(void);
 static void print_centered(int y, int ctrx, int color, char *fmt, ...) __attribute__((format(printf, 4, 5)));
+static char *time_duration_str(int time_span);
 static double get_average_cpm_for_bucket(int time_idx, int bidx);
 static double get_average_cpm_for_pht(int time_idx);
 static int input_handler(int input_char);
@@ -193,7 +191,7 @@ static void initialize(int argc, char **argv)
     //           Ludlum 2929 amplifier output.
     // endif
     if (mode == MODE_PLAYBACK) {
-        int line=0, time_idx;
+        int line=0, time_idx, last_time_idx=0;
         pulse_count_t pc;
         char s[1000];
 
@@ -228,7 +226,12 @@ static void initialize(int argc, char **argv)
                 if (time_idx < 0 || time_idx >= MAX_DATA) {
                     FATAL("time_idx %d out of range\n", time_idx);
                 }
-                // xxx warn if time_idx not in sequence
+                if (last_time_idx != 0 && time_idx != last_time_idx+1) {
+                    WARN("time_idx %d minus last_time_idx %d = %d, should be 1\n",
+                         time_idx, last_time_idx, time_idx - last_time_idx);
+                }
+                last_time_idx = time_idx;
+
                 data[time_idx] = pc;
                 max_data = time_idx+1;
             }
@@ -288,8 +291,6 @@ static void read_neutron_params(void)
     char s[100] = {0};
     int cnt;
 
-    INFO("reading neutron.params\n");
-
     fp = fopen("neutron.params", "r");
     if (fp == NULL) {
         WARN("failed to open neutron.params for reading\n");
@@ -303,7 +304,7 @@ static void read_neutron_params(void)
         ERROR("contents of neutron.params is invalid\n");
     }
 
-    INFO("   pht=%d  avg_intvl=%d  y_max=%d\n", pht, avg_intvl, y_max);
+    INFO("read neutron.params: pht=%d avg_intvl=%d y_max=%d\n", pht, avg_intvl, y_max);
 }
 
 static void write_neutron_params(void)
@@ -353,7 +354,6 @@ static void * live_mode_write_data_thread(void *cx)
     bool       terminate;
     static int last_time_idx_written = -1;
 
-// xxx rename time_idx tidx throughout
     // file should already been opened in initialize()
     assert(fp_dat);
 
@@ -400,6 +400,8 @@ static void update_display(int maxy, int maxx)
     static char x_axis[1000];
     static bool first_call = true;
 
+    int y;
+
     // initialize on first call
     if (first_call) {
         INFO("maxx = %d  maxy = %d\n", maxx, maxy);
@@ -408,16 +410,7 @@ static void update_display(int maxy, int maxx)
         first_call = false;
     }
 
-// xxx only for plot
-    // if tracking is enabled then update end_idx so that the latest
-    // neutron count data is displayed; note that tracking can only be
-    // set when in LIVE mode
-    if (tracking) {
-        end_idx = max_data - 1;
-    }
-
     // draw the x and y axis
-    int y;
     mvprintw(MAX_Y,BASE_X, x_axis);
     for (y = 0; y < MAX_Y; y++) {
         mvprintw(y,BASE_X-1, "|");
@@ -430,6 +423,13 @@ static void update_display(int maxy, int maxx)
     mvprintw(MAX_Y, 0,   "%8d", 0);
     mvprintw(5, 3,       "CPM");
 
+    // print params, mode, filename_dat, and max_data
+    mvprintw(24, 0, "pht       = %d", pht);
+    mvprintw(25, 0, "avg_intvl = %d", avg_intvl);
+    mvprintw(26, 0, "y_max     = %d", y_max);
+    print_centered(27, 40, COLOR_PAIR_NONE, "%s", MODE_STR(mode));
+    print_centered(28, 40, COLOR_PAIR_NONE, "%s - %d", filename_dat, max_data);
+
     // display either the neutron count plot or histogram
     switch (display_select) {
     case DISPLAY_PLOT:
@@ -439,32 +439,20 @@ static void update_display(int maxy, int maxx)
         update_display_histogram();
         break;
     }
-
-// xxx end_idx issue
-// xxx move to plot routine
-    // draw neutron cpm; color is:
-    // - GREEN: displaying the current value from the detector, in LIVE mode
-    // - RED: displaying old value, either from playback file, or from
-    //        having moved to an old value in the LIVE mode data
-    double cpm = get_average_cpm_for_pht(end_idx);
-    if (cpm != -1) {
-        int color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
-        print_centered(24, 40, color, "%0.3f CPM", cpm);
-    }
-
-    // print params, mode, filename_dat, and max_data
-    mvprintw(24, 0, "pht       = %d", pht);
-    mvprintw(25, 0, "avg_intvl = %d", avg_intvl);
-    mvprintw(26, 0, "y_max     = %d", y_max);
-    print_centered(27, 40, COLOR_PAIR_NONE, "%s", MODE_STR(mode));
-    print_centered(28, 40, COLOR_PAIR_NONE, "%s - %d", filename_dat, max_data);
 }
 
 static void update_display_plot(void)
 {
-    int    x, y, idx, start_idx, time_span;
+    int    x, y, idx, start_idx;
     time_t start_time, end_time;
-    char   start_time_str[100], end_time_str[100], time_span_str[100];
+    char   start_time_str[100], end_time_str[100];
+
+    // if tracking is enabled then update end_idx so that the latest
+    // neutron count data is displayed; note that tracking can only be
+    // set when in LIVE mode
+    if (tracking) {
+        end_idx = max_data - 1;
+    }
 
     // draw the neutron count rate plot
     start_idx = end_idx - avg_intvl * (MAX_X - 1);
@@ -491,88 +479,68 @@ static void update_display_plot(void)
     mvprintw(MAX_Y+2, BASE_X-4, "%s", start_time_str);
     mvprintw(MAX_Y+2, BASE_X+MAX_X-6, "%s", end_time_str);
 
-    // draw x axis time span, choose units dynamically
-    time_span = end_time - start_time;
-    if (time_span < 60) {
-        sprintf(time_span_str, "<--%d secs-->", time_span);
-    } else if (time_span < 3600) {
-        sprintf(time_span_str, "<--%.0f mins-->", time_span/60.);
-    } else {
-        sprintf(time_span_str, "<--%.3f hours-->", time_span/3600.);
+    // draw x axis time span
+    print_centered(MAX_Y+1, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "<- %s ->", 
+                   time_duration_str(end_time - start_time));
+
+    // draw neutron cpm; color is:
+    // - GREEN: displaying the current value from the detector, in LIVE mode
+    // - RED: displaying old value, either from playback file, or from
+    //        having moved to an old value in the LIVE mode data
+    double cpm = get_average_cpm_for_pht(end_idx);
+    if (cpm != -1) {
+        int color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
+        print_centered(24, 40, color, "%0.3f CPM", cpm);
     }
-    print_centered(MAX_Y+1, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", time_span_str);
 }
 
 static void update_display_histogram(void)
 {
-    int bidx, x, y, yy, color, start_idx;
-    double cpm;
+    int       bidx, x, y, yy;
+    double    cpm;
+    time_t    start_time, end_time;
+    char      start_time_str[100], end_time_str[100];
     const int first_bucket = PULSE_HEIGHT_TO_BUCKET_IDX(MIN_PULSE_HEIGHT);
 
-    // xxx also print span
-    // xxx end_idx problem
-    // xxx comments
-    // xxx need another y_tbl entry for histograms
-    // xxx the min pht should be higher, I think
-    // xxx takes too much time
-    // xxx another ytbl entry needed
     for (bidx = first_bucket; bidx < MAX_BUCKET; bidx++) {
-#if 0
+        // get the cpm, averaged over avg_intvl, for the specified bucket idx
         cpm = get_average_cpm_for_bucket(end_idx, bidx);
         if (cpm == -1) {
             continue;
         }
-#else
-        // xxx call idx tidx
-        //    xxx don't use this ..
-        start_idx = end_idx - avg_intvl * (MAX_X - 1);
-        double sum_cpm = 0, tmp_cpm;
-        int n = 0, idx;
-        for (idx = start_idx; idx <= end_idx; idx+=avg_intvl) {
-            tmp_cpm = get_average_cpm_for_bucket(idx, bidx);
-            if (tmp_cpm != -1) {
-                sum_cpm += tmp_cpm;
-                n++;
-            } else {
-                start_idx += avg_intvl;
-            }
-        }
-        if (n == 0) {
-            continue;
-        }
-        cpm = sum_cpm / n;
-#endif
 
+        // determine the x,y coordinates for plotting this histogram bucket
         x = BASE_X + bidx;
         y = nearbyint(MAX_Y * (1 - cpm / y_max));
         if (y < 0) y = 0;
 
-// xxx don't use trackng here, pick a different color
+        // plot the histogram bucket; use color CYAN if this bucket 
+        // falls within the pulse height threshold (which is ued when 
+        // determining the cpm in update_display_plot
         if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
-            color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
-            attron(COLOR_PAIR(color));
+            attron(COLOR_PAIR(COLOR_PAIR_CYAN));
         }
         for (yy = y; yy <= MAX_Y; yy++) {
             mvprintw(yy,x,"*");
         }
         if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
-            color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
-            attroff(COLOR_PAIR(color));
+            attroff(COLOR_PAIR(COLOR_PAIR_CYAN));
         }
 
+        // label teh x axis
         if (bidx == first_bucket || bidx == MAX_BUCKET/2 || bidx == MAX_BUCKET-1) {
             print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(bidx));
         }
 
-        // xxx comments,  and print span here
-        time_t start_time, end_time;
-        char   start_time_str[100], end_time_str[100], str[100];
-        start_time = data_start_time + start_idx - avg_intvl;
+        // display the time range over which this histogram has been evaluated
         end_time   = data_start_time + end_idx;
+        start_time = end_time - avg_intvl;
         time2str(start_time, start_time_str, false);
         time2str(end_time, end_time_str, false);
-        sprintf(str, "%s to %s", start_time_str+11, end_time_str+11);
-        print_centered(MAX_Y+2, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", str);
+        print_centered(MAX_Y+2, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "<- %s ... %s ->",
+                       start_time_str+11, end_time_str+11);
+        print_centered(MAX_Y+3, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", 
+                      time_duration_str(end_time - start_time));
     }
 }
 
@@ -592,20 +560,35 @@ static void print_centered(int y, int ctrx, int color, char *fmt, ...)
     if (color != COLOR_PAIR_NONE) attroff(COLOR_PAIR(color));
 }
 
+static char *time_duration_str(int time_span)
+{
+    static char s[200];
+
+    if (time_span < 60) {
+        sprintf(s, "%d secs", time_span);
+    } else if (time_span < 3600) {
+        sprintf(s, "%.0f mins", time_span/60.);
+    } else {
+        sprintf(s, "%.3f hours", time_span/3600.);
+    }
+
+    return s;
+}
+
 // Return cpm value that is the average for the specified bucket idx,
 //  over the time range time_idx-avg_intvl+1 to time_idx;
 // Return -1 if time_idx is not valid.
 static double get_average_cpm_for_bucket(int time_idx, int bidx)
 {
-    int i, sum=0;
+    int tidx, sum=0;
 
     if (time_idx-avg_intvl+1 < 0 || time_idx >= max_data) {
         return -1;
     }
 
     // xxx can this be cached
-    for (i = time_idx-avg_intvl+1; i <= time_idx; i++) {
-        sum += data[i].bucket[bidx];
+    for (tidx = time_idx-avg_intvl+1; tidx <= time_idx; tidx++) {
+        sum += data[tidx].bucket[bidx];
     }
 
     return ((double)sum / avg_intvl) * 60;
@@ -616,7 +599,7 @@ static double get_average_cpm_for_bucket(int time_idx, int bidx)
 // Return -1 if time_idx is not valid.
 static double get_average_cpm_for_pht(int time_idx)
 {
-    int i, sum=0;
+    int tidx, sum=0;
 
     static struct {
         int pht;
@@ -633,15 +616,15 @@ static double get_average_cpm_for_pht(int time_idx)
         return -1;
     }
 
-    for (i = time_idx-avg_intvl+1; i <= time_idx; i++) {
-        if (cached_sum.value[i] != -1) {
-            sum += cached_sum.value[i];
+    for (tidx = time_idx-avg_intvl+1; tidx <= time_idx; tidx++) {
+        if (cached_sum.value[tidx] != -1) {
+            sum += cached_sum.value[tidx];
         } else {
             int j, x=0;
             for (j = PULSE_HEIGHT_TO_BUCKET_IDX(pht); j < MAX_BUCKET; j++) {
-                x += data[i].bucket[j];
+                x += data[tidx].bucket[j];
             }
-            cached_sum.value[i] = x;
+            cached_sum.value[tidx] = x;
             sum += x;
         }
     }
@@ -661,7 +644,7 @@ static int input_handler(int input_char)
     case KEY_NPAGE: case KEY_PPAGE: {
         // adjust y_max
         #define MAX_Y_MAX_TBL (sizeof(y_max_tbl)/sizeof(y_max_tbl[0]))
-        static int y_max_tbl[] = { 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000, };  // cpm
+        static int y_max_tbl[] = { 2, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000, };  // cpm
         int i;
         for (i = 0; i < MAX_Y_MAX_TBL; i++) {
             if (y_max == y_max_tbl[i]) {

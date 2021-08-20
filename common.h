@@ -43,11 +43,13 @@ bool verbose[MAX_VERBOSE];
 
 #define MAX_BUCKET        60
 #define BUCKET_SIZE       5
-#define MIN_PULSE_HEIGHT  10
+#define MIN_PULSE_HEIGHT  20
 #define MAX_PULSE_HEIGHT  (BUCKET_IDX_TO_PULSE_HEIGHT(MAX_BUCKET-1))
-
-#define PULSE_HEIGHT_TO_BUCKET_IDX(ph)    ((ph) / BUCKET_SIZE)
 #define BUCKET_IDX_TO_PULSE_HEIGHT(bidx)  ((bidx) * BUCKET_SIZE)  // xxx use elsewhere
+static inline int PULSE_HEIGHT_TO_BUCKET_IDX(int ph) {
+    int bidx = ph / BUCKET_SIZE;
+    return bidx < MAX_BUCKET ? bidx : MAX_BUCKET-1;
+}
 
 typedef struct {
     int bucket[MAX_BUCKET];

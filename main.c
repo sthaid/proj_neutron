@@ -25,9 +25,17 @@
 #define DEFAULT_PHT       40    // PHT = Pulse Height Threshold
 #define DEFAULT_Y_MAX     1000  // must be an entry in y_max_tbl
 
+#define FILE_MAGIC 0x77777777
+
 //
 // typedefs
 //
+
+typedef struct {
+    int magic;
+    int pad;
+    uint64_t data_start_time;
+} file_hdr_t;
 
 //
 // variables
@@ -46,8 +54,8 @@ static pulse_count_t  data[MAX_DATA];
 static int            max_data;
 
 // save neutron pulse count data to file ...
-static char           filename_dat[200];
-static FILE         * fp_dat;
+static char           filename[200];
+static int            fd=-1;
 static pthread_t      live_mode_write_data_thread_id;
 
 // params ...
@@ -132,11 +140,11 @@ static void initialize(int argc, char **argv)
     setlinebuf(fp_log);
     fp_log2 = stderr;
 
-    // set mode and filename_dat to default
+    // set mode and filename to default
     char s[100];
     mode = MODE_LIVE;
-    sprintf(filename_dat, "neutron_%s.dat", time2str(time(NULL),s,true));
-    
+    sprintf(filename, "neutron_%s.dat", time2str(time(NULL),s,true));
+
     // parse options
     while (true) {
         int ch = getopt(argc, argv, "p:v:h");
@@ -146,7 +154,7 @@ static void initialize(int argc, char **argv)
         switch (ch) {
         case 'p':
             mode = MODE_PLAYBACK;
-            strcpy(filename_dat, optarg);
+            strcpy(filename, optarg);
             break;
         case 'v':
             if (strcmp(optarg, "all") == 0) {
@@ -170,7 +178,7 @@ static void initialize(int argc, char **argv)
     }
 
     // log program starting
-    INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n", MODE_STR(mode), filename_dat);
+    INFO("-------- STARTING: MODE=%s FILENAME=%s --------\n", MODE_STR(mode), filename);
 
     // register signal handler, used to terminate program gracefully
     static struct sigaction act;
@@ -183,79 +191,95 @@ static void initialize(int argc, char **argv)
     read_neutron_params();
 
     // if mode is PLAYBACK then
-    //   read data from filename_dat
+    //   read data from filename
     // else 
-    //   Create filename_dat, to save the neutron count data.
+    //   Create filename, to save the neutron count data.
     //   Initialize the ADC, and start the ADC acquiring data from the Ludlum.
     //     Note: Init mccdaq device, is used to acquire 500000 samples per second from the
     //           Ludlum 2929 amplifier output.
     // endif
     if (mode == MODE_PLAYBACK) {
-        int line=0, time_idx, last_time_idx=0;
-        pulse_count_t pc;
-        char s[1000];
+        int rc, data_len;
+        file_hdr_t file_hdr;
+        struct stat buf;
+        char s[100];
 
         // PLAYBACK mode init ...
-
-        // read filename_dat
-        fp_dat = fopen(filename_dat, "r");
-        if (fp_dat == NULL) {
-            FATAL("open %s for reading, %s\n", filename_dat, strerror(errno));
+        
+        // open filename
+        fd = open(filename, O_RDONLY);
+        if (fd < 0) {
+            FATAL("%s, open for reading, %s\n", filename, strerror(errno));
         }
-        while (fgets(s, sizeof(s), fp_dat) != NULL) {
-            line++;
-            if (line == 1) {
-                if (sscanf(s, "# data_start_time = %ld", &data_start_time) != 1) {
-                    FATAL("invalid line %d in %s\n", line, filename_dat);
-                }
-            } else {
-                char *p = s;
-                int i, chars;
 
-                if (sscanf(p, "%d - %n", &time_idx, &chars) != 1) {
-                    FATAL("invalid line %d in %s\n", line, filename_dat);
-                }
-                p += chars;
-                for (i = 0; i < MAX_BUCKET; i++) {
-                    if (sscanf(p, "%d %n", &pc.bucket[i], &chars) != 1) {
-                        FATAL("invalid line %d in %s\n", line, filename_dat);
-                    }
-                    p += chars;
-                }
-
-                if (time_idx < 0 || time_idx >= MAX_DATA) {
-                    FATAL("time_idx %d out of range\n", time_idx);
-                }
-                if (last_time_idx != 0 && time_idx != last_time_idx+1) {
-                    WARN("time_idx %d minus last_time_idx %d = %d, should be 1\n",
-                         time_idx, last_time_idx, time_idx - last_time_idx);
-                }
-                last_time_idx = time_idx;
-
-                data[time_idx] = pc;
-                max_data = time_idx+1;
-            }
+        // read and verify file_hdr
+        rc = read(fd, &file_hdr, sizeof(file_hdr));
+        if (rc != sizeof(file_hdr)) {
+            FATAL("%s, read file_hdr, rc=%d, %s\n", filename, rc, strerror(errno));
         }
-        fclose(fp_dat);
-        fp_dat = NULL;
-        INFO("max_data = %d\n", max_data);
+        if (file_hdr.magic != FILE_MAGIC) {
+            FATAL("%s, invalid file_hdr, 0x%x\n", filename, file_hdr.magic);
+        }
+
+        // the file data following the file_hdr is an array of pulse_count_t;
+        // determine the data_len
+        rc = fstat(fd, &buf);
+        if (rc < 0) {
+            FATAL("%s, failed fstat, %s\n", filename, strerror(errno));
+        }
+        data_len = buf.st_size - sizeof(file_hdr);
+        if (data_len <= 0 || data_len >= sizeof(data)) {
+            FATAL("%s, data_len out of range, data_len=%d\n", filename, data_len);
+        }
+        if ((data_len % sizeof(pulse_count_t)) != 0) {
+            FATAL("%s, data_len=%d is not multiple of %zd\n", filename, data_len, sizeof(pulse_count_t));
+        }
+
+        // read the data
+        rc = read(fd, data, data_len);
+        if (rc != data_len) {
+            FATAL("%s, read data, rc=%d, %s\n", filename, rc, strerror(errno));
+        }
+
+        // close file
+        close(fd);
+        fd = -1;
+
+        // set global variables: data_start_time and max_data
+        data_start_time = file_hdr.data_start_time;
+        max_data = data_len / sizeof(pulse_count_t);
+        INFO("data_start_time = %ld, %s\n", data_start_time, time2str(data_start_time,s,false));
+        INFO("max_data        = %d\n", max_data);
     } else {
+        file_hdr_t file_hdr;
+        int rc;
+
         // LIVE mode init ...
 
         // init mccdaq utils
-        int rc = mccdaq_init();
+        rc = mccdaq_init();
         if (rc < 0) {
             FATAL("mccdaq_init failed\n");
         }
 
-        // create filename_dat for writing, and
-        // write the data_start_time to the file
-        fp_dat = fopen(filename_dat, "w");
-        if (fp_dat == NULL) {
-            FATAL("open %s for writing, %s\n", filename_dat, strerror(errno));
+        // create filename for writing, and write the file_hdr
+        fd = open(filename, O_WRONLY|O_CREAT|O_EXCL, 0644);
+        if (fd < 0) {
+            FATAL("%s, open for writing, %s\n", filename, strerror(errno));
         }
-        data_start_time = time(NULL);
-        fprintf(fp_dat, "# data_start_time = %ld\n", data_start_time);
+        memset(&file_hdr, 0, sizeof(file_hdr));
+        file_hdr.magic = FILE_MAGIC;
+        file_hdr.data_start_time = time(NULL);
+        rc = write(fd, &file_hdr, sizeof(file_hdr));
+        if (rc != sizeof(file_hdr)) {
+            FATAL("%s, write file_hdr, rc=%d, %s\n", filename, rc, strerror(errno));
+        }
+
+        // set global variables: data_start_time and max_data
+        data_start_time = file_hdr.data_start_time;
+        max_data = 0;
+        INFO("data_start_time = %ld, %s\n", data_start_time, time2str(data_start_time,s,false));
+        INFO("max_data        = %d\n", max_data);
 
         // create thread that will write the neutron count data to
         // the neutron.dat file
@@ -350,12 +374,12 @@ void publish(time_t time_now, pulse_count_t *pc)
 
 static void * live_mode_write_data_thread(void *cx)
 {
-    int        time_idx, i;
+    int        time_idx, rc;
     bool       terminate;
     static int last_time_idx_written = -1;
 
     // file should already been opened in initialize()
-    assert(fp_dat);
+    assert(fd > 0);
 
     // loop, writing data to neutron.dat file
     while (true) {
@@ -365,11 +389,12 @@ static void * live_mode_write_data_thread(void *cx)
         // write new neutron count data entries to the file
         for (time_idx = last_time_idx_written+1; time_idx < max_data; time_idx++) {
             pulse_count_t *pc = &data[time_idx];
-            fprintf(fp_dat, "%d - ", time_idx);
-            for (i = 0; i < MAX_BUCKET; i++) {
-                fprintf(fp_dat, "%d ", pc->bucket[i]);
+
+            rc = write(fd, pc, sizeof(pulse_count_t));
+            if (rc != sizeof(pulse_count_t)) {
+                ERROR("writing pulse_count to %s, rc=%d, %s\n", filename, rc, strerror(errno));
             }
-            fprintf(fp_dat, "\n");
+
             last_time_idx_written = time_idx;
         }
 
@@ -382,9 +407,9 @@ static void * live_mode_write_data_thread(void *cx)
         sleep(1);
     }
 
-    // close the file, and
-    // exit this thread
-    fclose(fp_dat);
+    // close the file, and exit this thread
+    close(fd);
+    fd = -1;
     return NULL;
 }
 
@@ -423,12 +448,12 @@ static void update_display(int maxy, int maxx)
     mvprintw(MAX_Y, 0,   "%8d", 0);
     mvprintw(5, 3,       "CPM");
 
-    // print params, mode, filename_dat, and max_data
+    // print params, mode, filename, and max_data
     mvprintw(24, 0, "pht       = %d", pht);
     mvprintw(25, 0, "avg_intvl = %d", avg_intvl);
     mvprintw(26, 0, "y_max     = %d", y_max);
     print_centered(27, 40, COLOR_PAIR_NONE, "%s", MODE_STR(mode));
-    print_centered(28, 40, COLOR_PAIR_NONE, "%s - %d", filename_dat, max_data);
+    print_centered(28, 40, COLOR_PAIR_NONE, "%s - %d", filename, max_data);
 
     // display either the neutron count plot or histogram
     switch (display_select) {

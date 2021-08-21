@@ -6,11 +6,16 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include <signal.h>
 #include <assert.h>
-#include <math.h>
+
+#include <signal.h>
 #include <pthread.h>
 #include <curses.h>
+#include <math.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // -----------------  LOGGING  -----------------------
 
@@ -21,10 +26,10 @@ bool verbose[MAX_VERBOSE];
 
 #define PRINT_COMMON(lvl, fmt, args...) \
     do { \
-        char s[100]; \
-        fprintf(fp_log, "%s " lvl ": " fmt, time2str(time(NULL),s,false), ## args); \
+        char _s[100]; \
+        fprintf(fp_log, "%s " lvl ": " fmt, time2str(time(NULL),_s,false), ## args); \
         if (fp_log2) { \
-            fprintf(fp_log2, "%s " lvl ": " fmt, time2str(time(NULL),s,false), ## args); \
+            fprintf(fp_log2, "%s " lvl ": " fmt, time2str(time(NULL),_s,false), ## args); \
         } \
     } while (0)
 

@@ -195,6 +195,8 @@ int32_t  mccdaq_start(mccdaq_callback_t cb)
 
 int32_t mccdaq_stop(void)
 {
+    int cnt=0;
+
     // if not initialized then return error
     if (g_state == NOT_INITIALIZED) {
         ERROR("not initialized\n");
@@ -207,6 +209,11 @@ int32_t mccdaq_stop(void)
     // wait for threads to be not running
     while (g_producer_thread_running || g_consumer_thread_running) {
         usleep(1000);
+        if (++cnt > 2000) {
+            if (g_producer_thread_running) ERROR("producer_thread failed to stop\n");
+            if (g_consumer_thread_running) ERROR("consumer_thread failed to stop\n");
+            break;
+        }
     }
 
     // set state to STOPPED

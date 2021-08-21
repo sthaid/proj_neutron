@@ -71,7 +71,7 @@ static void update_display_plot(void);
 static void update_display_histogram(void);
 static void print_centered(int y, int ctrx, int color, char *fmt, ...) __attribute__((format(printf, 4, 5)));
 static char *time_duration_str(int time_span);
-static double get_average_cpm_for_bucket(int time_idx, int bidx);
+static double *get_average_cpm_for_all_buckets(int time_idx);
 static double get_average_cpm_for_pht(int time_idx);
 static int input_handler(int input_char);
 
@@ -497,51 +497,53 @@ static void update_display_plot(void)
 static void update_display_histogram(void)
 {
     int       bidx, x, y, yy;
-    double    cpm;
+    double  * cpm;
     time_t    start_time, end_time;
     char      start_time_str[100], end_time_str[100];
     const int first_bucket = PULSE_HEIGHT_TO_BUCKET_IDX(MIN_PULSE_HEIGHT);
 
+    // calculate the array of average bucket values; where each average bucket
+    // value returned is the average over the interval end_idx-avg_intvl+1 to end_idx
+    cpm = get_average_cpm_for_all_buckets(end_idx);
+
+    // loop over all buckets and display the histogram values for each bucket
     for (bidx = first_bucket; bidx < MAX_BUCKET; bidx++) {
-        // get the cpm, averaged over avg_intvl, for the specified bucket idx
-        cpm = get_average_cpm_for_bucket(end_idx, bidx);
-        if (cpm == -1) {
+        // if no cpm value available at this bucket idx then continue
+        if (cpm[bidx] == -1) {
             continue;
         }
 
         // determine the x,y coordinates for plotting this histogram bucket
         x = BASE_X + bidx;
-        y = nearbyint(MAX_Y * (1 - cpm / y_max));
+        y = nearbyint(MAX_Y * (1 - cpm[bidx] / y_max));
         if (y < 0) y = 0;
 
         // plot the histogram bucket; use color CYAN if this bucket 
-        // falls within the pulse height threshold (which is ued when 
-        // determining the cpm in update_display_plot
-        if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
-            attron(COLOR_PAIR(COLOR_PAIR_CYAN));
-        }
+        // falls within the pulse height threshold
+        if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) attron(COLOR_PAIR(COLOR_PAIR_CYAN));
         for (yy = y; yy <= MAX_Y; yy++) {
             mvprintw(yy,x,"*");
         }
-        if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) {
-            attroff(COLOR_PAIR(COLOR_PAIR_CYAN));
-        }
+        if (bidx >= PULSE_HEIGHT_TO_BUCKET_IDX(pht)) attroff(COLOR_PAIR(COLOR_PAIR_CYAN));
+    }
 
-        // label teh x axis
+    // label the x axis
+    for (bidx = first_bucket; bidx < MAX_BUCKET; bidx++) {
+        x = BASE_X + bidx;
         if (bidx == first_bucket || bidx == MAX_BUCKET/2 || bidx == MAX_BUCKET-1) {
             print_centered(MAX_Y+1, x, COLOR_PAIR_NONE, "%d", BUCKET_IDX_TO_PULSE_HEIGHT(bidx));
         }
-
-        // display the time range over which this histogram has been evaluated
-        end_time   = data_start_time + end_idx;
-        start_time = end_time - avg_intvl;
-        time2str(start_time, start_time_str, false);
-        time2str(end_time, end_time_str, false);
-        print_centered(MAX_Y+2, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "<- %s ... %s ->",
-                       start_time_str+11, end_time_str+11);
-        print_centered(MAX_Y+3, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", 
-                      time_duration_str(end_time - start_time));
     }
+
+    // display the time range over which this histogram has been evaluated
+    end_time   = data_start_time + end_idx;
+    start_time = end_time - avg_intvl;
+    time2str(start_time, start_time_str, false);
+    time2str(end_time, end_time_str, false);
+    print_centered(MAX_Y+2, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "<- %s ... %s ->",
+                   start_time_str+11, end_time_str+11);
+    print_centered(MAX_Y+3, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", 
+                  time_duration_str(end_time - start_time));
 }
 
 static void print_centered(int y, int ctrx, int color, char *fmt, ...)
@@ -575,23 +577,63 @@ static char *time_duration_str(int time_span)
     return s;
 }
 
-// Return cpm value that is the average for the specified bucket idx,
+// Return cpm value array that is the average for all buckets
 //  over the time range time_idx-avg_intvl+1 to time_idx;
-// Return -1 if time_idx is not valid.
-static double get_average_cpm_for_bucket(int time_idx, int bidx)
+// Return array of -1 if time_idx is not valid.
+static double *get_average_cpm_for_all_buckets(int time_idx)
 {
-    int tidx, sum=0;
+    #define MAX_SAVE 2048
 
+    static bool first_call = true;
+    static double cpm_no_data[MAX_BUCKET];
+    static struct save_s {
+        int time_idx;
+        int avg_intvl;
+        double cpm[MAX_BUCKET];
+    } save[MAX_SAVE];
+
+    struct save_s *s;
+    int tidx, bidx, hidx, sum;
+
+    // on first call init cpm_no_data, which is the return value 
+    // for when time_idx is out of range
+    if (first_call) {
+        for (bidx = 0; bidx < MAX_BUCKET; bidx++) {
+            cpm_no_data[bidx] = -1;
+        }
+        first_call = false;
+    }
+
+    // if time_idx is out of range then return cpm_no_data
     if (time_idx-avg_intvl+1 < 0 || time_idx >= max_data) {
-        return -1;
+        return cpm_no_data;
     }
 
-    // xxx can this be cached
-    for (tidx = time_idx-avg_intvl+1; tidx <= time_idx; tidx++) {
-        sum += data[tidx].bucket[bidx];
+    // do hash tbl lookup to see if a saved result is available; 
+    // if so, then return the saved result
+    hidx = (time_idx % MAX_SAVE);
+    s = &save[hidx];
+    if (s->time_idx == time_idx && s->avg_intvl == avg_intvl) {
+        return s->cpm;
     }
 
-    return ((double)sum / avg_intvl) * 60;
+    // calculate the average for each bucket over the range
+    // time_idx-avg_intvl+1 to time_idx
+    for (bidx = 0; bidx < MAX_BUCKET; bidx++) {
+        sum = 0;
+        for (tidx = time_idx-avg_intvl+1; tidx <= time_idx; tidx++) {
+            sum += data[tidx].bucket[bidx];
+        }
+        s->cpm[bidx] = ((double)sum / avg_intvl) * 60;
+    }
+
+    // set the time_idx and avg_intvl signature in the result save tbl
+    // update table of saved results with the 
+    s->time_idx = time_idx;
+    s->avg_intvl = avg_intvl;
+
+    // return the array of bucket average values
+    return s->cpm;
 }
 
 // Return cpm value that is the average for the sum of all buckets >= pht,
@@ -599,37 +641,54 @@ static double get_average_cpm_for_bucket(int time_idx, int bidx)
 // Return -1 if time_idx is not valid.
 static double get_average_cpm_for_pht(int time_idx)
 {
-    int tidx, sum=0;
+    int tidx, sum, sum_buckets, bidx;
+    double cpm;
 
     static struct {
-        int pht;
-        int value[MAX_DATA];
-    } cached_sum;
+        int    avg_intvl;
+        int    pht;
+        double cpm[MAX_DATA];
+        bool   cpm_valid[MAX_DATA];
+    } save;
 
-// xxx func of avg_intvl and pht  idxed by tidx
-    if (cached_sum.pht != pht) {
-        memset(cached_sum.value, 0xff, sizeof(cached_sum.value));
-        cached_sum.pht = pht;
-    }
-
+    // if time_idx is out of range then return -1
     if (time_idx-avg_intvl+1 < 0 || time_idx >= max_data) {
         return -1;
     }
 
-    for (tidx = time_idx-avg_intvl+1; tidx <= time_idx; tidx++) {
-        if (cached_sum.value[tidx] != -1) {
-            sum += cached_sum.value[tidx];
-        } else {
-            int j, x=0;
-            for (j = PULSE_HEIGHT_TO_BUCKET_IDX(pht); j < MAX_BUCKET; j++) {
-                x += data[tidx].bucket[j];
-            }
-            cached_sum.value[tidx] = x;
-            sum += x;
-        }
+    // if current avg_intvl or pht is different than the avg_intvl/pht associated
+    // with the saved results, then clear the saved results so that they
+    // will be recalculated
+    if (save.avg_intvl != avg_intvl || save.pht != pht) {
+        memset(save.cpm_valid, 0, sizeof(save.cpm_valid));
+        save.avg_intvl = avg_intvl;
+        save.pht = pht;
     }
 
-    return ((double)sum / avg_intvl) * 60;
+    // if there is a saved result available for time_idx then return it
+    if (save.cpm_valid[time_idx]) {
+        return save.cpm[time_idx];
+    }
+
+    // calculate the cpm value that will be returned; and save the result 
+    sum = 0;
+    for (tidx = time_idx-avg_intvl+1; tidx <= time_idx; tidx++) {
+        // sum the buckets which contain counts for pules with heights
+        // that are greater or eqal to the pulse haight threshold
+        sum_buckets = 0;
+        for (bidx = PULSE_HEIGHT_TO_BUCKET_IDX(pht); bidx < MAX_BUCKET; bidx++) {
+            sum_buckets += data[tidx].bucket[bidx];
+        }
+
+        // sum the sum_buckets that was just calculated
+        sum += sum_buckets;
+    }
+    cpm = ((double)sum / avg_intvl) * 60;
+    save.cpm[time_idx] = cpm;
+    save.cpm_valid[time_idx] = true;
+
+    // return the cpm value
+    return cpm;
 }
 
 static int input_handler(int input_char)
@@ -694,8 +753,8 @@ static int input_handler(int input_char)
         // select plot or historgram display
         display_select = (input_char == KEY_F0+1 ? DISPLAY_PLOT : DISPLAY_HISTOGRAM);
         break;
-    case 'w': case 'r':
-        // read or wrie parameters
+    case 's': case 'r':
+        // save or recall parameters
         if (input_char == 'r') {
             read_neutron_params();
         } else {

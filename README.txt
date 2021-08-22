@@ -2,17 +2,17 @@
 INTRODUCTION
 ====================================
 
-I am a fusor hobbyist, and I have used the information provided
-on fusor.net to make a working fusor in my basement. To validate that
-a fusion reaction has occurred a means to detect neutrons is required.
+I am a fusor hobbyist, and I have used information provided on fusor.net 
+to make a working fusor in my basement. To validate that a fusion reaction has 
+occurred a means to detect neutrons is required.
 
 There are a couple of ways to detect neutrons. The approach I took
 makes use of a Helium-3 gas proportional detector. Refer to
 https://en.wikipedia.org/wiki/Neutron_detection#Gas_proportional_detectors
 
 Links to my fusor and to a following power supply upgrade are here:
-https://fusor.net/board/viewtopic.php?f=6&t=11581
-https://fusor.net/board/viewtopic.php?f=11&t=13134
+  https://fusor.net/board/viewtopic.php?f=6&t=11581
+  https://fusor.net/board/viewtopic.php?f=11&t=13134
 
 My fusor utilized 2 Raspberry Pi computers for data collection and display.
 One of the Raspberry Pi was dedicated to the neutron counter function, and
@@ -40,11 +40,11 @@ HARDWARE DIAGRAM
    |Tube    |      --------                   -----------
    ----------
 
-(1) Ludlum front panel Detector Input Connection:
+(1) Ludlum front panel, Detector Input Connection:
     "Detector Input Connection: a series “C” coaxial connector used to supply
      the detector with its bias voltage and also to return the signal from the
      detector."
-(2) Ludlum read panel Amp-Out:
+(2) Ludlum rear panel, Amp-Out:
    "Amp Out: a BNC connector that provides access to the final amplifier stage. The
     pulse is positive-going with a maximum amplitude of approximately 22 V"
 
@@ -72,7 +72,7 @@ Notes regarding the Ludlum 2929:
 - The Ludlum 2929 is intended to count Alpha and Beta-Gamma. And the 
   hardware pulse height analyzer is factory calibrated to be used with the 
   Model 43-10-1 Alpha/Beta Sample Counter.
-- I chose the Ludlim 2929 because of it provides the rear panel Amp-Out connection;
+- I chose the Ludlim 2929 because it provides the rear panel Amp-Out connection;
   which I use with the ADC and software to scan the signal for pulses.
 - The Ludlum 2929 manual contains a Calibration Procedures section; which describes
   how to calibrate the Beta pulse threshold/window, and the Alpha threshold. It may
@@ -85,8 +85,12 @@ Notes regarding the Measurement-Computing-USB-204 ADC
      https://www.mccdaq.com/TechTips/TechTip-9.aspx
 
 Parts List:
-- 
-- xxx,  include HDPE
+- He-3 Detector Tube
+- Ludlum 2929 Scaler
+- ADC Measurement-Computing-USB-204 ADC
+- Raspberry Pi 3 Model B, keyboard, monitor, power supply
+- cables
+- HDPE moderator
 
 ====================================
 NEUTRON COUNTER SOFTWARE
@@ -112,7 +116,7 @@ In both Live and Playback modes, the program has option to display either:
 - histogram of pulse count rate vs pulse height.
 
   When displaying the plot of pulse count rate vs time, the pulse count rate is displayed 
-  in green when in Live Mode and the it is being displayed for the current time.
+  in green when in Live Mode and it is being displayed for the current time.
   Otherwise the pulse count rate is displayed in red.
 
   When displaying the histogram, the histogram buckets that are included in the calculation
@@ -196,7 +200,7 @@ code in util_mccdaq.c and mccdaq_cb.c is used as well.
 
 Source code files ...
 
-Main.c:
+main.c:
 - Maintains an array of pulse count data: 'static pulse_count_t  data[MAX_DATA];'
   - When in playback mode, this array is filled by the initialize() routine, using data from a file.
   - When in live mode, new entries are added to this array, once per second, by the 
@@ -213,7 +217,7 @@ Main.c:
                 |                 is then zeroed in preparation for analyzing the next second of
                 |                 ADC data.
                 v
-        publish()                 main.c: This routine appends the pulse_count data input, to
+        publish()                 main.c: This routine appends the pulse_count input data, to
                                   the data array that is defined in main.c
 - Uses the curses library to draw a plot of CPM vs time, or CPM vs histogram bucket.
 - When in Live Mode, the live_mode_write_data_thread monitors for newly published pulse_count_t
@@ -227,7 +231,7 @@ util_mccdaq.c:
 
 mccdaq_cb.c:
 - the mccdaq_callback() routine scans the ADC data for pulses, and calls the publish() routine
-  (in main.c), once per second, with the pulse count values, indexed by pulse height
+  (in main.c), once per second, with the pulse count values.
   
 =======================================================================
 =======================================================================

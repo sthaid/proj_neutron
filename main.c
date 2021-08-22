@@ -3,8 +3,7 @@
 // - testing
 // - documentation
 // - README.md
-// - histogram uses a lot of cpu
-// - the dat file takes a long time to read
+// - put cursor somewhere at end
 
 #include <common.h>
 

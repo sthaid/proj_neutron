@@ -4,7 +4,7 @@ INTRODUCTION
 
 I am a fusor hobbyist, and I have used the information provided
 on fusor.net to make a working fusor in my basement. To validate that
-a fusion reaction has occurred a means to detect neutrons is needed.
+a fusion reaction has occurred a means to detect neutrons is required.
 
 There are a couple of ways to detect neutrons. The approach I took
 makes use of a Helium-3 gas proportional detector. Refer to
@@ -16,20 +16,18 @@ https://fusor.net/board/viewtopic.php?f=11&t=13134
 
 My fusor utilized 2 Raspberry Pi computers for data collection and display.
 One of the Raspberry Pi was dedicated to the neutron counter function, and
-it sent neutron count values to the other Raspberry Pi. The function of the
-other was to collect and display data, which included: voltage, current, 
+it provided neutron count values to the other Raspberry Pi. The function of the
+other was to collect and display data, including: voltage, current, 
 pressure, neutron-count, and video.
 
 I am now in the process of dismantling the fusor and preparing to sell the
-parts, hopefully to other fusor hobbyists.
+parts. I hope to be able to help other fusor hobbyists.
 
 To prepare the neutron counter for sale I have updated the software, so that
 the neutron counter Raspberry Pi will now display plots of the count rate vs.
-time, and count rate histogram. The software is contained in this github
-repository. This software re-uses c language code that was used in the fusor.
-However, the code in main.c, which displays the neutron count rate plots, is new.
-
-xxx how I tested, and provide links
+time, and count rate histogram. The software is provided in this github
+repository. This software re-uses code that was used in the fusor. However, 
+the code in main.c, which displays the neutron count rate plots, is all new.
 
 ====================================
 HARDWARE DIAGRAM
@@ -62,7 +60,7 @@ Components:
 
 Notes regarding the He-3 SI-19N Proportional Counter Tube
 - I set the bias voltage to 1700V.
-- I have seen various statements about bias voltage for this tube:
+- I have seen various statements about bias voltage for this detector tube:
   - Onset of counting voltage: 1600V
   - Recommended operating voltage: 2000-2800V (corona mode
   - Recommended operating voltage: 1600V (1500-2800V)
@@ -71,15 +69,15 @@ Notes regarding the He-3 SI-19N Proportional Counter Tube
   - Recommended bias voltage - 1400V (proportional mode)
 
 Notes regarding the Ludlum 2929:
-- The Ludlum 2929 is intended to count Alpha and Beta-Gamma. And the pulse height
-  analyzer is factory calibrated to be used with the 
+- The Ludlum 2929 is intended to count Alpha and Beta-Gamma. And the 
+  hardware pulse height analyzer is factory calibrated to be used with the 
   Model 43-10-1 Alpha/Beta Sample Counter.
 - I chose the Ludlim 2929 because of it provides the rear panel Amp-Out connection;
-  which I use with the ADC and software to analyze pulse height.
+  which I use with the ADC and software to scan the signal for pulses.
 - The Ludlum 2929 manual contains a Calibration Procedures section; which describes
   how to calibrate the Beta pulse threshold/window, and the Alpha threshold. It may
   be possible to change the Ludlum calibration for use with the SI-19N neutron 
-  detector tube. But, the procedure is complex, and I do not recomend this approach.
+  detector tube. But, the procedure is complicated, and I do not recomend this approach.
 
 Notes regarding the Measurement-Computing-USB-204 ADC
 - The 500k samples/sec ADC rate is achieved only if the ADC is configured for 1 channel.
@@ -110,7 +108,7 @@ The program runs in either Live Mode or Playback Mode.
   - program log output is written to neutron.log
 
 In both Live and Playback modes, the program has option to display either:
-- plot of pulse count rate (units=CPM) vs Time, or
+- plot of pulse count rate (units=CPM) vs time, or
 - histogram of pulse count rate vs pulse height.
 
   When displaying the plot of pulse count rate vs time, the pulse count rate is displayed 
@@ -193,7 +191,7 @@ To build, run make. My Raspberry Pi has the build environment installed. To buil
 on another computer, you must install the mccdaq software, refer to
 http://www.mccdaq.com/TechTips/TechTip-9.aspx for instructions.
 
-When in Playback Mode, only code in main.c is used. When in Live Mode, the
+When in Playback Mode, only the code in main.c is used. When in Live Mode, the
 code in util_mccdaq.c and mccdaq_cb.c is used as well.
 
 Source code files ...

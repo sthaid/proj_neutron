@@ -29,7 +29,7 @@ time, and count rate histogram. The software is contained in this github
 repository. This software re-uses c language code that was used in the fusor.
 However, the code in main.c, which displays the neutron count rate plots, is new.
 
-XXX how I tested
+xxx how I tested, and provide links
 
 ====================================
 HARDWARE DIAGRAM
@@ -87,13 +87,16 @@ Notes regarding the Measurement-Computing-USB-204 ADC
      https://www.mccdaq.com/TechTips/TechTip-9.aspx
 
 Parts List:
-- xxx
+- 
+- xxx,  include HDPE
 
 ====================================
-NEUTRON COUNTER SOFTWARE USAGE
+NEUTRON COUNTER SOFTWARE
 ====================================
 
+------------------
 ---- Overview ----
+------------------
 
 The program runs in either Live Mode or Playback Mode. 
 - Live Mode:
@@ -117,7 +120,9 @@ In both Live and Playback modes, the program has option to display either:
   When displaying the histogram, the histogram buckets that are included in the calculation
   of the pulse count rate are displayed in cyan.
 
----- Details ----
+-----------------------
+---- Usage Details ----
+-----------------------
 
 To run the program, login neutron, cd proj_neutron.
 
@@ -152,7 +157,9 @@ Program Controls:
     R           : reset parameters to default values
     q           : quit program
 
+--------------------------
 ---- Verbose Logging  ----
+--------------------------
 
 -v0:  xxx
 
@@ -178,16 +185,55 @@ Program Controls:
 
 -v2:  xxx
 
-====================================
-NEUTRON COUNTER SOFTWARE DESGIN
-====================================
+------------------------
+---- Program Design ----
+------------------------
 
-Overview 
+To build, run make. My Raspberry Pi has the build environment installed. To build
+on another computer, you must install the mccdaq software, refer to
+http://www.mccdaq.com/TechTips/TechTip-9.aspx for instructions.
 
-Live mode vs Playback mode diffs
+When in Playback Mode, only code in main.c is used. When in Live Mode, the
+code in util_mccdaq.c and mccdaq_cb.c is used as well.
 
-Code Flow
+Source code files ...
 
+Main.c:
+- Maintains an array of pulse count data: 'static pulse_count_t  data[MAX_DATA];'
+  - When in playback mode, this array is filled by the initialize() routine, using data from a file.
+  - When in live mode, new entries are added to this array, once per second, by the 
+    publish() routine. The publish routine is called in the following flow:
+        mccdaq_consumer_thread()  util_mccdaq.c: This thread detects that data from the
+                |                 ADC is available, and calls mccdaq_callback (g_cb) with
+                |                 this data.
+                v
+        mccdaq_callback()         mccdaq_cb.c: This routine scans the ADC data for pulses,
+                |                 and keeps track of the number of pulses and their heights
+                |                 in the pulse_count.bucket[] array. Each element of the
+                |                 bucket array is for a different range of pulse height. Once per
+                |                 second the pulse_count is passed to publish(), and the pulse_count
+                |                 is then zeroed in preparation for analyzing the next second of
+                |                 ADC data.
+                v
+        publish()                 main.c: This routine appends the pulse_count data input, to
+                                  the data array that is defined in main.c
+- Uses the curses library to draw a plot of CPM vs time, or CPM vs histogram bucket.
+- When in Live Mode, the live_mode_write_data_thread monitors for newly published pulse_count_t
+  being added to the data[] array. And when new data is added, this thread will write the data to
+  the neutron_yyyy-mm-dd_hh-mm-ss.dat file.
+
+util_mccdaq.c:
+- mccdaq_producer_thread: reads data from the ADC, using USB; and stores the values in g_data
+- mccdaq_consumer_thread: detects when new ADC values are available in g_data, and calls
+  g_cb (mccdaq_callback), passing the new ADC values to mccdaq_callback
+
+mccdaq_cb.c:
+- the mccdaq_callback() routine scans the ADC data for pulses, and calls the publish() routine
+  (in main.c), once per second, with the pulse count values, indexed by pulse height
+  
+=======================================================================
+=======================================================================
+=======================================================================
 
 xxxx add pictures and screenshots
 ----------------------------------

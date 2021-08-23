@@ -3,14 +3,14 @@ INTRODUCTION
 ====================================
 
 I am a fusor hobbyist, and I have used information provided on fusor.net 
-to make a working fusor in my basement. To validate that a fusion reaction has 
-occurred a means to detect neutrons is required.
+to make a working fusor in my basement. A neutron detector is needed to 
+validate that fusion has occurred.
 
 There are a couple of ways to detect neutrons. The approach I took
 makes use of a Helium-3 gas proportional detector. Refer to
 https://en.wikipedia.org/wiki/Neutron_detection#Gas_proportional_detectors
 
-Links to my fusor and to a following power supply upgrade are here:
+Links to my fusor and to a power supply upgrade are here:
   https://fusor.net/board/viewtopic.php?f=6&t=11581
   https://fusor.net/board/viewtopic.php?f=11&t=13134
 
@@ -27,7 +27,7 @@ To prepare the neutron counter for sale I have updated the software, so that
 the neutron counter Raspberry Pi will now display plots of the count rate vs.
 time, and count rate histogram. The software is provided in this github
 repository. This software re-uses code that was used in the fusor. However, 
-the code in main.c, which displays the neutron count rate plots, is all new.
+the code in main.c, which displays the neutron count rate plots, is new.
 
 ====================================
 HARDWARE DIAGRAM
@@ -45,8 +45,8 @@ HARDWARE DIAGRAM
      the detector with its bias voltage and also to return the signal from the
      detector."
 (2) Ludlum rear panel, Amp-Out:
-   "Amp Out: a BNC connector that provides access to the final amplifier stage. The
-    pulse is positive-going with a maximum amplitude of approximately 22 V"
+    "Amp Out: a BNC connector that provides access to the final amplifier stage. The
+     pulse is positive-going with a maximum amplitude of approximately 22 V"
 
 Components:
 - He-3 Neutron Detector Proportional Counter Tube SI-19N СИ-19Н
@@ -62,22 +62,22 @@ Notes regarding the He-3 SI-19N Proportional Counter Tube
 - I set the bias voltage to 1700V.
 - I have seen various statements about bias voltage for this detector tube:
   - Onset of counting voltage: 1600V
-  - Recommended operating voltage: 2000-2800V (corona mode
+  - Recommended operating voltage: 2000-2800V (corona mode)
   - Recommended operating voltage: 1600V (1500-2800V)
   - Operating Voltage - 2000-2800V
   - Count Start Voltage - 1600-1750V
   - Recommended bias voltage - 1400V (proportional mode)
 
 Notes regarding the Ludlum 2929:
-- The Ludlum 2929 is intended to count Alpha and Beta-Gamma. And the 
+- The Ludlum 2929 is intended to count Alpha and Beta-Gamma. And the Ludlum's
   hardware pulse height analyzer is factory calibrated to be used with the 
   Model 43-10-1 Alpha/Beta Sample Counter.
-- I chose the Ludlim 2929 because it provides the rear panel Amp-Out connection;
+- I chose the Ludlum 2929 because it provides the rear panel Amp-Out connection;
   which I use with the ADC and software to scan the signal for pulses.
 - The Ludlum 2929 manual contains a Calibration Procedures section; which describes
   how to calibrate the Beta pulse threshold/window, and the Alpha threshold. It may
   be possible to change the Ludlum calibration for use with the SI-19N neutron 
-  detector tube. But, the procedure is complicated, and I do not recomend this approach.
+  detector tube. But, the procedure is complicated, and I do not recommend this approach.
 
 Notes regarding the Measurement-Computing-USB-204 ADC
 - The 500k samples/sec ADC rate is achieved only if the ADC is configured for 1 channel.
@@ -105,22 +105,22 @@ The program runs in either Live Mode or Playback Mode.
   - analog pulse data is read from the ADC, the data is scanned for pulses.
   - pulse count rate data is stored in file neutron_yyyy-mm-dd_hh-mm-ss.dat
 - Playback Mode: 
-  - an exsiting file of pulse count rate data is read when the program starts
+  - an existing file of pulse count rate data is read when the program starts
   - the ADC is not used in Playback Mode
 - Both Modes:
   - pulse count rate is displayed in either a time series plot, or a histogram
-  - program log output is written to neutron.log
+  - program logging output is written to neutron.log file
 
-In both Live and Playback modes, the program has option to display either:
+In both Live and Playback modes, the program will display either:
 - plot of pulse count rate (units=CPM) vs time, or
 - histogram of pulse count rate vs pulse height.
 
-  When displaying the plot of pulse count rate vs time, the pulse count rate is displayed 
-  in green when in Live Mode and it is being displayed for the current time.
-  Otherwise the pulse count rate is displayed in red.
+   When displaying the plot of pulse count rate vs time, the pulse count rate is displayed 
+   in green when in Live Mode and it is being displayed for the current time.
+   Otherwise the pulse count rate is displayed in red.
 
-  When displaying the histogram, the histogram buckets that are included in the calculation
-  of the pulse count rate are displayed in cyan.
+   When displaying the histogram, the histogram buckets that are included in the calculation
+   of the pulse count rate are displayed in cyan.
 
 -----------------------
 ---- Usage Details ----
@@ -137,7 +137,7 @@ Program settings:
 - avg_intvl:  the duration (in seconds) of each plot data point
 - pht:        pulse height threshold, pulses that have heights >= pht are
               included in the calculation of the pulse count rate
-- y_max:      y axis maximum value for the plot and histogram
+- y_max:      y axis maximum value for the plot and histogram display
 
 Program Controls:
 - Display Selection
@@ -145,15 +145,14 @@ Program Controls:
 - Adjust Settings:
     PgUp  PgDn :  adjust y_max
     -     =    :  adjust avg_intvl
-    1     2    :  adjst pht
+    1     2    :  adjust pht
 - Adjust Time:
     Left  Right : by avg_intvl
     ,     .     : by 1 second
     <     >     : by 1 minute
     k     l     : by 1 hour
-    Home        : move to begining of data
-    End         : move to end of data, and enable live mode 
-                  automatic time adjustment
+    Home        : go to beginning of data
+    End         : go to end of data, and enable live mode automatic time adjustment
 - Misc
     s     r     : save and recall parameters
     R           : reset parameters to default values
@@ -163,7 +162,23 @@ Program Controls:
 ---- Verbose Logging  ----
 --------------------------
 
--v0:  xxx
+-v0:  enables this print, which prints at a once per second rate:
+        VERBOSE0("ADC samples=%d restarts=%d baseline=%d total_pulses=%d\n",
+                 max_data, mccdaq_restart_count, baseline, total_pulses);
+      adc_samples: The number of samples scanned in the past second, and
+                   should be near 500000.
+      restarts:    The number of times the collection of the ADC voltage values
+                   (via USB in util_mccdaq.c) needed to be restarted. This should
+                   be 0, but if it is > 0 it is not usually a serious problem. 
+                   When greater than 0, then some of the ADC samples will have 
+                   been lost. I believe that when other CPU loads are present, this
+                   could lead to restarts.
+      baseline ADC value minus 2048.
+      total_pulses: The number of pulses detected in the past second, with a pulse
+                   height that exceeds MIN_PULSE_HEIGHT. Note that MIN_PULSE_HEIGHT
+                   and pht differ. MIN_PULSE_HEIGHT defines the minimum pulse height
+                   that will be accumulated in a pulse_count.bucket[]. MIN_PULSE_HEIGHT
+                   is a constant defined in common.h
 
 -v1:  prints pulses to the log file. 
       Pulses a printed at most once per second, to avoid using too much log file space or 
@@ -185,7 +200,7 @@ Program Controls:
           (2) baseline level, which is the value read from the ADC when there 
               is not a pulse present
 
--v2:  xxx
+-v2:  enables logging related to reading the ADC voltage values, in file util_mccdaq.c
 
 ------------------------
 ---- Program Design ----
@@ -201,7 +216,7 @@ code in util_mccdaq.c and mccdaq_cb.c is used as well.
 Source code files ...
 
 main.c:
-- Maintains an array of pulse count data: 'static pulse_count_t  data[MAX_DATA];'
+- Maintains an array of pulse count data: 'static pulse_count_t data[MAX_DATA];'
   - When in playback mode, this array is filled by the initialize() routine, using data from a file.
   - When in live mode, new entries are added to this array, once per second, by the 
     publish() routine. The publish routine is called in the following flow:
@@ -218,7 +233,7 @@ main.c:
                 |                 ADC data.
                 v
         publish()                 main.c: This routine appends the pulse_count input data, to
-                                  the data array that is defined in main.c
+                                  the pulse_count_t data array that is defined in main.c
 - Uses the curses library to draw a plot of CPM vs time, or CPM vs histogram bucket.
 - When in Live Mode, the live_mode_write_data_thread monitors for newly published pulse_count_t
   being added to the data[] array. And when new data is added, this thread will write the data to
@@ -232,10 +247,3 @@ util_mccdaq.c:
 mccdaq_cb.c:
 - the mccdaq_callback() routine scans the ADC data for pulses, and calls the publish() routine
   (in main.c), once per second, with the pulse count values.
-  
-=======================================================================
-=======================================================================
-=======================================================================
-
-xxxx add pictures and screenshots
-----------------------------------

@@ -50,7 +50,7 @@ bool verbose[MAX_VERBOSE];
 #define BUCKET_SIZE       5
 #define MIN_PULSE_HEIGHT  20
 #define MAX_PULSE_HEIGHT  (BUCKET_IDX_TO_PULSE_HEIGHT(MAX_BUCKET-1))
-#define BUCKET_IDX_TO_PULSE_HEIGHT(bidx)  ((bidx) * BUCKET_SIZE)  // xxx use elsewhere
+#define BUCKET_IDX_TO_PULSE_HEIGHT(bidx)  ((bidx) * BUCKET_SIZE)
 static inline int PULSE_HEIGHT_TO_BUCKET_IDX(int ph) {
     int bidx = ph / BUCKET_SIZE;
     return bidx < MAX_BUCKET ? bidx : MAX_BUCKET-1;

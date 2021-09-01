@@ -1,10 +1,3 @@
-// xxx todo ...
-// - review & comments
-// - testing
-// - documentation
-// - README.md
-// - put cursor somewhere at end
-
 #include <common.h>
 
 //
@@ -463,6 +456,16 @@ static void update_display(int maxy, int maxx)
         update_display_histogram();
         break;
     }
+
+    // draw neutron cpm; color is:
+    // - GREEN: displaying the current value from the detector, in LIVE mode
+    // - RED: displaying old value, either from playback file, or from
+    //        having moved to an old value in the LIVE mode data
+    double cpm = get_average_cpm_for_pht(end_idx);
+    if (cpm != -1) {
+        int color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
+        print_centered(24, 40, color, "%0.3f CPM", cpm);
+    }
 }
 
 static void update_display_plot(void)
@@ -504,18 +507,8 @@ static void update_display_plot(void)
     mvprintw(MAX_Y+2, BASE_X+MAX_X-6, "%s", end_time_str);
 
     // draw x axis time span
-    print_centered(MAX_Y+1, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "<- %s ->", 
+    print_centered(MAX_Y+1, 40, COLOR_PAIR_NONE, "<- %s ->", 
                    time_duration_str(end_time - start_time));
-
-    // draw neutron cpm; color is:
-    // - GREEN: displaying the current value from the detector, in LIVE mode
-    // - RED: displaying old value, either from playback file, or from
-    //        having moved to an old value in the LIVE mode data
-    double cpm = get_average_cpm_for_pht(end_idx);
-    if (cpm != -1) {
-        int color = (tracking ? COLOR_PAIR_GREEN : COLOR_PAIR_RED);
-        print_centered(24, 40, color, "%0.3f CPM", cpm);
-    }
 }
 
 static void update_display_histogram(void)
@@ -564,9 +557,9 @@ static void update_display_histogram(void)
     start_time = end_time - avg_intvl;
     time2str(start_time, start_time_str, false);
     time2str(end_time, end_time_str, false);
-    print_centered(MAX_Y+2, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "<- %s ... %s ->",
+    print_centered(MAX_Y+2, 40, COLOR_PAIR_NONE, "<- %s ... %s ->",
                    start_time_str+11, end_time_str+11);
-    print_centered(MAX_Y+3, BASE_X+MAX_X/2, COLOR_PAIR_NONE, "%s", 
+    print_centered(MAX_Y+3, 40, COLOR_PAIR_NONE, "%s", 
                   time_duration_str(end_time - start_time));
 }
 

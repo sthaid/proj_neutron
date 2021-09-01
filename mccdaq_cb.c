@@ -6,8 +6,13 @@ static void print_plot_str(int32_t value, int32_t baseline);
 
 // -----------------  MCCDAQ CALLBACK  ----------------------------
 
-// xxx comment
-// xxx    // x (10000/2048)  ~= 50 mV
+// This program uses the raw ADC value, and does not convert to mV.
+// FYI, the conversion is:
+//       8  =  -10000 mV
+//    2048  =       0 mV
+//    4095  =   10000 mv
+// mV = (ADC - 2048) * (10000/2047)
+// mV ~= (ADC - 2048) * 5
 
 int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 {

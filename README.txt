@@ -45,8 +45,8 @@ HARDWARE DIAGRAM
      the detector with its bias voltage and also to return the signal from the
      detector."
 (2) Ludlum rear panel, Amp-Out:
-    "Amp Out: a BNC connector that provides access to the final amplifier stage. The
-     pulse is positive-going with a maximum amplitude of approximately 22 V"
+    "Amp Out: a BNC connector that provides access to the final amplifier stage.
+     The pulse is positive-going with a maximum amplitude of approximately 22 V"
 
 Components:
 - He-3 Neutron Detector Proportional Counter Tube SI-19N СИ-19Н
@@ -74,14 +74,17 @@ Notes regarding the Ludlum 2929:
   Model 43-10-1 Alpha/Beta Sample Counter.
 - I chose the Ludlum 2929 because it provides the rear panel Amp-Out connection;
   which I use with the ADC and software to scan the signal for pulses.
-- The Ludlum 2929 manual contains a Calibration Procedures section; which describes
-  how to calibrate the Beta pulse threshold/window, and the Alpha threshold. It may
-  be possible to change the Ludlum calibration for use with the SI-19N neutron 
-  detector tube. But, the procedure is complicated, and I do not recommend this approach.
+- The Ludlum 2929 manual contains a Calibration Procedures section; which 
+  describes how to calibrate the Beta pulse threshold/window, and the Alpha 
+  threshold. It may be possible to change the Ludlum calibration for use 
+  with the SI-19N neutron detector tube. But, the procedure is complicated, 
+  and I do not recommend this approach.
 
 Notes regarding the Measurement-Computing-USB-204 ADC
-- The 500k samples/sec ADC rate is achieved only if the ADC is configured for 1 channel.
-- TechTip: Raspberry Pi Data Acquisition using MCC DAQ and Third-Party Linux Drivers
+- The 500k samples/sec ADC rate is achieved only if the ADC is configured 
+  for 1 channel.
+- TechTip: 
+  Raspberry Pi Data Acquisition using MCC DAQ and Third-Party Linux Drivers
      https://www.mccdaq.com/TechTips/TechTip-9.aspx
 
 Parts List:
@@ -123,12 +126,12 @@ In both Live and Playback modes, the program will display either:
 - plot of pulse count rate (units=CPM) vs time, or
 - histogram of pulse count rate vs pulse height.
 
-   When displaying the plot of pulse count rate vs time, the pulse count rate is displayed 
-   in green when in Live Mode and it is being displayed for the current time.
-   Otherwise the pulse count rate is displayed in red.
+   When displaying the plot of pulse count rate vs time, the pulse count rate
+   is displayed in green when in Live Mode and it is being displayed for the 
+   current time.  Otherwise the pulse count rate is displayed in red.
 
-   When displaying the histogram, the histogram buckets that are included in the calculation
-   of the pulse count rate are displayed in cyan.
+   When displaying the histogram, the histogram buckets that are included in 
+   the calculation of the pulse count rate are displayed in cyan.
 
 -----------------------
 ---- Usage Details ----
@@ -160,7 +163,8 @@ Program Controls:
     <     >     : by 1 minute
     k     l     : by 1 hour
     Home        : go to beginning of data
-    End         : go to end of data, and enable live mode automatic time adjustment
+    End         : go to end of data, and enable live mode automatic 
+                  time adjustment
 - Misc
     s     r     : save and recall parameters
     R           : reset parameters to default values
@@ -175,25 +179,26 @@ Program Controls:
                  max_data, mccdaq_restart_count, baseline, total_pulses);
       adc_samples: The number of samples scanned in the past second, and
                    should be near 500000.
-      restarts:    The number of times the collection of the ADC voltage values
-                   (via USB in util_mccdaq.c) needed to be restarted. This should
-                   be 0, but if it is > 0 it is not usually a serious problem. 
-                   When greater than 0, then some of the ADC samples will have 
-                   been lost. I believe that when other CPU loads are present, this
-                   could lead to restarts.
+      restarts: The number of times the collection of the ADC voltage values
+                (via USB in util_mccdaq.c) needed to be restarted. This should
+                be 0, but if it is > 0 it is not usually a serious problem. 
+                When greater than 0, then some of the ADC samples will have 
+                been lost. I believe that when other CPU loads are present, this
+                could lead to restarts.
       baseline ADC value minus 2048.
-      total_pulses: The number of pulses detected in the past second, with a pulse
-                   height that exceeds MIN_PULSE_HEIGHT. Note that MIN_PULSE_HEIGHT
-                   and pht differ. MIN_PULSE_HEIGHT defines the minimum pulse height
-                   that will be accumulated in a pulse_count.bucket[]. MIN_PULSE_HEIGHT
-                   is a constant defined in common.h
+      total_pulses: The number of pulses detected in the past second, with a 
+          pulse height that exceeds MIN_PULSE_HEIGHT. Note that MIN_PULSE_HEIGHT
+          and pht differ. MIN_PULSE_HEIGHT defines the minimum pulse height
+          that will be accumulated in a pulse_count.bucket[]. MIN_PULSE_HEIGHT
+          is a constant defined in common.h
 
 -v1:  prints pulses to the log file. 
-      Pulses a printed at most once per second, to avoid using too much log file space or 
-      too much CPU time.  An example of a pulse printed to the logfile:
+      Pulses a printed at most once per second, to avoid using too much 
+      log file space or too much CPU time.  
+      An example of a pulse printed to the logfile:
           PULSE:  height = 309   baseline = 2386
             338: *********************************+
-            647: *********************************+*******************************
+            647: *********************************+****************************
             583: *********************************+*************************
             404: *********************************+*******
             350: *********************************+**
@@ -208,14 +213,15 @@ Program Controls:
           (2) baseline level, which is the value read from the ADC when there 
               is not a pulse present
 
--v2:  enables logging related to reading the ADC voltage values, in file util_mccdaq.c
+-v2:  enables logging related to reading the ADC voltage values, in file 
+      util_mccdaq.c
 
 ------------------------
 ---- Program Design ----
 ------------------------
 
-To build, run make. My Raspberry Pi has the build environment installed. To build
-on another computer, you must install the mccdaq software, refer to
+To build, run make. My Raspberry Pi has the build environment installed. 
+To build on another computer, you must install the mccdaq software, refer to
 http://www.mccdaq.com/TechTips/TechTip-9.aspx for instructions.
 
 When in Playback Mode, only the code in main.c is used. When in Live Mode, the
@@ -225,33 +231,41 @@ Source code files ...
 
 main.c:
 - Maintains an array of pulse count data: 'static pulse_count_t data[MAX_DATA];'
-  - When in playback mode, this array is filled by the initialize() routine, using data from a file.
-  - When in live mode, new entries are added to this array, once per second, by the 
-    publish() routine. The publish routine is called in the following flow:
-        mccdaq_consumer_thread()  util_mccdaq.c: This thread detects that data from the
-                |                 ADC is available, and calls mccdaq_callback (g_cb) with
-                |                 this data.
+  - When in playback mode, this array is filled by the initialize() routine, 
+    using data from a file.
+  - When in live mode, new entries are added to this array, once per second, by
+     the publish() routine. The publish routine is called in the following flow:
+        mccdaq_consumer_thread()  util_mccdaq.c: This thread detects that 
+                |                 data from ADC is available, and calls 
+                |                 mccdaq_callback (g_cb) with this data
                 v
-        mccdaq_callback()         mccdaq_cb.c: This routine scans the ADC data for pulses,
-                |                 and keeps track of the number of pulses and their heights
-                |                 in the pulse_count.bucket[] array. Each element of the
-                |                 bucket array is for a different range of pulse height. Once per
-                |                 second the pulse_count is passed to publish(), and the pulse_count
-                |                 is then zeroed in preparation for analyzing the next second of
-                |                 ADC data.
+        mccdaq_callback()         mccdaq_cb.c: This routine scans the ADC data 
+                |                 for pulses, and keeps track of the number of 
+                |                 pulses and their heights in the pulse_count.
+                |                 bucket[] array. Each element of the bucket 
+                |                 array is for a different range of pulse 
+                |                 height. Once per second the pulse_count is 
+                |                 passed to publish(), and the pulse_count
+                |                 is then zeroed in preparation for analyzing 
+                |                 the next second of ADC data.
                 v
-        publish()                 main.c: This routine appends the pulse_count input data, to
-                                  the pulse_count_t data array that is defined in main.c
-- Uses the curses library to draw a plot of CPM vs time, or CPM vs histogram bucket.
-- When in Live Mode, the live_mode_write_data_thread monitors for newly published pulse_count_t
-  being added to the data[] array. And when new data is added, this thread will write the data to
-  the neutron_yyyy-mm-dd_hh-mm-ss.dat file.
+        publish()                 main.c: This routine appends the pulse_count 
+                                  input data, to the pulse_count_t data array 
+                                  that is defined in main.c
+- Uses the curses library to draw a plot of CPM vs time, or 
+  CPM vs histogram bucket.
+- When in Live Mode, the live_mode_write_data_thread monitors for newly 
+  published pulse_count_t being added to the data[] array. And when new data is
+  added, this thread will write the data to the 
+  neutron_yyyy-mm-dd_hh-mm-ss.dat file.
 
 util_mccdaq.c:
-- mccdaq_producer_thread: reads data from the ADC, using USB; and stores the values in g_data
-- mccdaq_consumer_thread: detects when new ADC values are available in g_data, and calls
-  g_cb (mccdaq_callback), passing the new ADC values to mccdaq_callback
+- mccdaq_producer_thread: reads data from the ADC, using USB; and stores 
+  the values in g_data
+- mccdaq_consumer_thread: detects when new ADC values are available in g_data,
+  and calls g_cb (mccdaq_callback), passing the new ADC values to 
+  mccdaq_callback
 
 mccdaq_cb.c:
-- the mccdaq_callback() routine scans the ADC data for pulses, and calls the publish() routine
-  (in main.c), once per second, with the pulse count values.
+- the mccdaq_callback() routine scans the ADC data for pulses, and calls the 
+  publish() routine (in main.c), once per second, with the pulse count values.

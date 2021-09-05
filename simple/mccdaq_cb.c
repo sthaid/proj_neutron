@@ -159,8 +159,8 @@ int32_t mccdaq_callback(uint16_t * d, int32_t max_d)
 
         // check for conditions that warrant a warning message to be logged
         mccdaq_restart_count = mccdaq_get_restart_count();
-        if (mccdaq_restart_count > 1 ||
-            max_data < 480000 || max_data > 520000 ||
+        if (mccdaq_restart_count > (2*TIME_INTVL_SECS) ||
+            max_data/TIME_INTVL_SECS < 460000 || max_data/TIME_INTVL_SECS > 520000 ||
             baseline < 2350 || baseline > 2420)
         {
             WARN("mccdaq_restart_count=%d max_data=%d baseline=%d\n",

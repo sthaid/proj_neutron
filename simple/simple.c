@@ -57,8 +57,8 @@ int main(int argc, char **argv)
         // if a pulse_count was published then print and log it
         if (pulse_count != -1) {
             char s[100];
-            printf("%s  %f\n", time2str(time(NULL),s,false), pulse_count*(60./TIME_INTVL_SECS));
-            INFO("PULSE_COUNT = %0.1f\n", pulse_count * (60./TIME_INTVL_SECS));
+            printf("%s  %0.1f CPM\n", time2str(time(NULL),s,false), pulse_count*(60./TIME_INTVL_SECS));
+            INFO("PULSE_COUNT = %0.1f CPM\n", pulse_count * (60./TIME_INTVL_SECS));
             pulse_count = -1;
         }
 

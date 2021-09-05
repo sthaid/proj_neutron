@@ -2,3 +2,5 @@ neutron
 neutron.log
 neutron*.dat
 neutron.params
+simple
+simple.log

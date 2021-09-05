@@ -93,6 +93,14 @@ Parts List:
 - HDPE moderator
 
 ====================================
+SIMPLE NEUTRON COUNTER SOFTWARE
+====================================
+
+This is in the simple directory.
+
+This simple program just prints the neutron count rate at 5 second intervals.
+
+====================================
 NEUTRON COUNTER SOFTWARE
 ====================================
 
